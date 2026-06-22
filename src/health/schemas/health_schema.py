@@ -5,6 +5,8 @@ from pydantic import BaseModel
 
 
 class SleepData(BaseModel):
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
     light: Optional[float] = None
     deep: Optional[float] = None
     wake: Optional[float] = None
@@ -39,6 +41,12 @@ class HrvData(BaseModel):
     unit: Optional[str] = "ms"
 
 
+class MetData(BaseModel):
+    value: Optional[float] = None
+    unit: Optional[str] = "MET"
+    time: Optional[datetime] = None
+
+
 class EcgData(BaseModel):
     status: Optional[str] = None
     file_url: Optional[str] = None
@@ -65,6 +73,7 @@ class UploadHealthDataRequest(BaseModel):
     body_temperature: Optional[BodyTemperatureData] = None
     hrv: Optional[HrvData] = None
     ecg: Optional[EcgData] = None
+    met: Optional[list[MetData]] = None
     stress: Optional[StressData] = None
     activity: Optional[ActivityData] = None
     blood_components: Optional[dict] = None

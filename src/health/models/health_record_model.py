@@ -23,6 +23,7 @@ class HealthRecord(Base):
     ecg = Column(JSON, nullable=True)
     stress = Column(JSON, nullable=True)
     activity = Column(JSON, nullable=True)
+    met = Column(JSON, nullable=True)
     blood_components = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(

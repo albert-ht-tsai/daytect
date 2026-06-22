@@ -36,6 +36,9 @@ def upload_health_data(db: Session, device: Device, body: UploadHealthDataReques
                 seen_times.add(reading["time"])
         record.heart_rate = existing
 
+    if body.met is not None:
+        record.met = [r.model_dump(mode="json") for r in body.met]
+
     for field in (
         "sleep",
         "blood_pressure",
