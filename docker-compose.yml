@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    container_name: app
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./keys/global-bundle.pem:/certs/global-bundle.pem:ro
+      - ./alembic/versions:/app/alembic/versions
