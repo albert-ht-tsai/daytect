@@ -226,6 +226,7 @@ def _today_sleep(record: HealthRecord | None, prev_record: HealthRecord | None) 
         deep=sleep.get("deep"),
         wake=sleep.get("wake"),
         total=total,
+        quality=sleep.get("quality"),
         status=_map_status(status),
         trend=_value_trend(total, prev_total),
     )
@@ -361,6 +362,7 @@ def _build_today_health_data(record: HealthRecord | None) -> HealthDataTimeline:
     if record.sleep:
         s = record.sleep
         sleep_records.append(SleepRecord(
+            date=record.date.isoformat() if record.date else None,
             start_time=s.get("start_time") or recorded_at_str or None,
             end_time=s.get("end_time"),
             light=s.get("light"),
@@ -575,6 +577,7 @@ def _weekly_sleep(records: list[HealthRecord]) -> WeeklySleepMetric | None:
     avg_light = _avg([s.get("light") for s in sleeps])
     avg_deep = _avg([s.get("deep") for s in sleeps])
     avg_wake = _avg([s.get("wake") for s in sleeps])
+    avg_quality = _avg([s.get("quality") for s in sleeps])
     status = health_metrics.sleep_status(avg_total)
     first, second = _half_split(records)
     first_avg = _avg([(r.sleep or {}).get("total") for r in first])
@@ -584,6 +587,7 @@ def _weekly_sleep(records: list[HealthRecord]) -> WeeklySleepMetric | None:
         avg_deep=round(avg_deep, 1) if avg_deep is not None else None,
         avg_wake=round(avg_wake, 1) if avg_wake is not None else None,
         avg_total=round(avg_total, 1) if avg_total is not None else None,
+        avg_quality=round(avg_quality, 1) if avg_quality is not None else None,
         status=_map_status(status),
         trend=_value_trend(second_avg, first_avg),
     )
@@ -737,6 +741,8 @@ def _build_weekly_health_data(records: list[HealthRecord]) -> HealthDataTimeline
             s = record.sleep
             sleep_records.append(SleepRecord(
                 date=date_str,
+                start_time=s.get("start_time"),
+                end_time=s.get("end_time"),
                 light=s.get("light"),
                 deep=s.get("deep"),
                 wake=s.get("wake"),

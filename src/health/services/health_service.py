@@ -6,10 +6,6 @@ from sqlalchemy.orm import Session
 
 from src.health.models.health_record_model import HealthRecord
 from src.health.schemas.health_schema import (
-    BloodPressureMetric,
-    HealthDataByDateResponse,
-    HealthDataMetrics,
-    MetricStatusValue,
     UploadHealthOriginRequest,
     UploadSleepRequest,
 )
@@ -149,16 +145,6 @@ def upload_sleep_data(db: Session, device: Device, body: UploadSleepRequest) -> 
 
 
 
-def get_available_dates(db: Session, device: Device) -> list[str]:
-    rows = (
-        db.query(HealthRecord.date)
-        .filter(HealthRecord.device_id == device.id)
-        .order_by(HealthRecord.date.desc())
-        .all()
-    )
-    return [row[0].isoformat() for row in rows]
-
-
 def average_heart_rate(record: HealthRecord) -> float | None:
     readings = record.heart_rate or []
     if not readings:
@@ -186,48 +172,3 @@ def compute_metric_statuses(record: HealthRecord) -> dict:
     }
 
 
-def get_health_data_by_date(db: Session, device: Device, date) -> HealthDataByDateResponse | None:
-    record = (
-        db.query(HealthRecord)
-        .filter(HealthRecord.device_id == device.id, HealthRecord.date == date)
-        .first()
-    )
-    if record is None:
-        return None
-
-    statuses = compute_metric_statuses(record)
-    score, level = health_metrics.compute_health_score(statuses)
-
-    sleep = record.sleep or {}
-    activity = record.activity or {}
-    bp = record.blood_pressure or {}
-
-    sleep_total = sleep.get("total")
-    sleep_label = f"{int(sleep_total // 60)}h {int(sleep_total % 60)}m" if sleep_total else None
-
-    metrics = HealthDataMetrics(
-        heart_rate=MetricStatusValue(value=average_heart_rate(record), unit="bpm", status=statuses["heart_rate"]),
-        hrv=MetricStatusValue(value=(record.hrv or {}).get("value"), unit="ms", status=statuses["hrv"]),
-        blood_pressure=BloodPressureMetric(
-            systolic=bp.get("systolic"),
-            diastolic=bp.get("diastolic"),
-            unit=bp.get("unit", "mmHg"),
-            status=statuses["blood_pressure"],
-        ),
-        blood_oxygen=MetricStatusValue(
-            value=(record.blood_oxygen or {}).get("value"), unit="%", status=statuses["blood_oxygen"]
-        ),
-        sleep=MetricStatusValue(value=sleep_label, status=statuses["sleep"]),
-        body_temperature=MetricStatusValue(
-            value=(record.body_temperature or {}).get("value"), unit="°C", status=statuses["body_temperature"]
-        ),
-        activity=MetricStatusValue(value=activity.get("steps"), status=statuses["activity"]),
-    )
-
-    return HealthDataByDateResponse(
-        device_id=device.id,
-        date=record.date.isoformat(),
-        health_score=score,
-        status=level,
-        metrics=metrics,
-    )

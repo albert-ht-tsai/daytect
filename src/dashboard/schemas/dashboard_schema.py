@@ -74,6 +74,7 @@ class SleepMetric(BaseModel):
     deep: Optional[float] = None
     wake: Optional[float] = None
     total: Optional[float] = None
+    quality: Optional[int] = None
     status: MetricStatus
     trend: MetricTrend
 
@@ -150,6 +151,7 @@ class WeeklySleepMetric(BaseModel):
     avg_deep: Optional[float] = None
     avg_wake: Optional[float] = None
     avg_total: Optional[float] = None
+    avg_quality: Optional[float] = None
     status: MetricStatus
     trend: MetricTrend
 

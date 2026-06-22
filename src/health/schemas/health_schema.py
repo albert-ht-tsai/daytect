@@ -79,36 +79,3 @@ class UploadHealthOriginResponseData(BaseModel):
     record_ids: list[int]
 
 
-class AvailableDatesResponse(BaseModel):
-    dates: list[str]
-
-
-class MetricStatusValue(BaseModel):
-    value: float | str | None = None
-    unit: Optional[str] = None
-    status: Optional[str] = None
-
-
-class BloodPressureMetric(BaseModel):
-    systolic: Optional[float] = None
-    diastolic: Optional[float] = None
-    unit: Optional[str] = None
-    status: Optional[str] = None
-
-
-class HealthDataMetrics(BaseModel):
-    heart_rate: Optional[MetricStatusValue] = None
-    hrv: Optional[MetricStatusValue] = None
-    blood_pressure: Optional[BloodPressureMetric] = None
-    blood_oxygen: Optional[MetricStatusValue] = None
-    sleep: Optional[MetricStatusValue] = None
-    body_temperature: Optional[MetricStatusValue] = None
-    activity: Optional[MetricStatusValue] = None
-
-
-class HealthDataByDateResponse(BaseModel):
-    device_id: int
-    date: str
-    health_score: int
-    status: str
-    metrics: HealthDataMetrics
