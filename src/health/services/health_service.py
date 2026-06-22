@@ -129,7 +129,7 @@ def get_health_data_by_date(db: Session, device: Device, date) -> HealthDataByDa
         ),
         sleep=MetricStatusValue(value=sleep_label, status=statuses["sleep"]),
         body_temperature=MetricStatusValue(
-            value=(record.body_temperature or {}).get("value"), unit="celsius", status=statuses["body_temperature"]
+            value=(record.body_temperature or {}).get("value"), unit="°C", status=statuses["body_temperature"]
         ),
         activity=MetricStatusValue(value=activity.get("steps"), status=statuses["activity"]),
     )

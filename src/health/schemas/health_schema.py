@@ -33,7 +33,7 @@ class BloodOxygenData(BaseModel):
 
 class BodyTemperatureData(BaseModel):
     value: Optional[float] = None
-    unit: Optional[str] = "celsius"
+    unit: Optional[str] = "°C"
 
 
 class HrvData(BaseModel):
