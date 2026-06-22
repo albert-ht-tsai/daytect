@@ -14,6 +14,7 @@ class User(Base):
     password = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     name = Column(String(100), nullable=True)
+    avatar = Column(String(255), nullable=True)
     region = Column(String(50), nullable=True)
     sex = Column(String(20), nullable=True)
     height = Column(Float, nullable=True)

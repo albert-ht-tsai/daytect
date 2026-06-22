@@ -1,10 +1,13 @@
 from datetime import datetime, timezone
 
+from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from src.core.config import BASE_URL
+from src.core.files import save_avatar
 from src.user.models.user_model import User
 from src.user.schemas.user_schema import (
+    AvatarData,
+    AvatarUpdateResponse,
     BmiData,
     BmiResponse,
     BodyInsightData,
@@ -47,7 +50,7 @@ def get_me(user: User) -> MeResponse:
             id=user.id,
             email=user.email,
             name=user.name,
-            avatar_url=f"{BASE_URL}/avatar/user_{user.id}.png",
+            avatar_url=user.avatar,
         )
     )
 
@@ -58,6 +61,13 @@ def update_me(db: Session, user: User, data: MeUpdateRequest) -> MeUpdateRespons
     db.add(user)
     db.commit()
     return MeUpdateResponse()
+
+
+def update_my_avatar(db: Session, user: User, file: UploadFile) -> AvatarUpdateResponse:
+    user.avatar = save_avatar(file, "user", user.id)
+    db.add(user)
+    db.commit()
+    return AvatarUpdateResponse(data=AvatarData(avatar_url=user.avatar))
 
 
 # ── /users/me/body-insight ────────────────────────────────────────────────────

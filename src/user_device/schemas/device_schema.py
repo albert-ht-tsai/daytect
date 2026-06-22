@@ -9,7 +9,6 @@ class RegisterDeviceRequest(BaseModel):
     user_id: Optional[int] = None
     mac_address: str
     name: str
-    avatar: Optional[str] = None
     group: str = "my_devices"
 
 
@@ -65,7 +64,6 @@ class DeviceGroupsResponse(BaseModel):
 
 class UpdateDeviceRequest(BaseModel):
     name: Optional[str] = None
-    avatar: Optional[str] = None
     is_share: Optional[bool] = None
 
 
@@ -73,6 +71,18 @@ class UpdateDeviceResponse(BaseModel):
     success: bool = True
     data: None = None
     message: str = "Device updated successfully."
+
+
+# ── Device Avatar ────────────────────────────────────────────────────────────
+
+class DeviceAvatarData(BaseModel):
+    avatar: str
+
+
+class DeviceAvatarResponse(BaseModel):
+    success: bool = True
+    data: DeviceAvatarData
+    message: str = "Device avatar updated successfully."
 
 
 # ── Delete Device ────────────────────────────────────────────────────────────

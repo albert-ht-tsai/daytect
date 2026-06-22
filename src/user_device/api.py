@@ -1,8 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, File, UploadFile
 
 from src.core.deps import CurrentUser, SessionDep
 from src.user_device.schemas.device_schema import (
     DeleteDeviceResponse,
+    DeviceAvatarResponse,
     DeviceDetailResponse,
     DeviceGroupsResponse,
     RegisterDeviceRequest,
@@ -15,6 +16,7 @@ from src.user_device.services.device_service import (
     list_device_groups,
     register_device,
     update_device,
+    update_device_avatar,
 )
 
 router = APIRouter(tags=["devices"])
@@ -39,6 +41,13 @@ def get_user_device_groups_endpoint(user_id: int, db: SessionDep, current_user: 
 def update_device_endpoint(device_id: int, body: UpdateDeviceRequest, db: SessionDep, current_user: CurrentUser):
     update_device(db, current_user, device_id, body)
     return UpdateDeviceResponse()
+
+
+@router.post("/devices/{device_id}/avatar", response_model=DeviceAvatarResponse)
+def update_device_avatar_endpoint(
+    device_id: int, db: SessionDep, current_user: CurrentUser, file: UploadFile = File(...)
+):
+    return update_device_avatar(db, current_user, device_id, file)
 
 
 @router.delete("/devices/{device_id}", response_model=DeleteDeviceResponse)

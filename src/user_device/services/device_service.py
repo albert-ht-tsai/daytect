@@ -1,10 +1,13 @@
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from src.core.config import BASE_URL
+from src.core.files import save_avatar
 from src.user.models.user_model import User
 from src.user_device.models.device_model import Device
 from src.user_device.schemas.device_schema import (
+    DeviceAvatarData,
+    DeviceAvatarResponse,
     DeviceData,
     DeviceDetailResponse,
     DeviceGroupsData,
@@ -36,7 +39,6 @@ def register_device(db: Session, user: User, body: RegisterDeviceRequest) -> Dev
         user_id=user.id,
         mac_address=body.mac_address,
         name=body.name,
-        avatar=body.avatar,
         group=body.group,
         qrcode=f"{BASE_URL}/qrcode/{body.mac_address}",
     )
@@ -85,6 +87,14 @@ def update_device(db: Session, user: User, device_id: int, body: UpdateDeviceReq
         setattr(device, field, value)
     db.add(device)
     db.commit()
+
+
+def update_device_avatar(db: Session, user: User, device_id: int, file: UploadFile) -> DeviceAvatarResponse:
+    device = get_owned_device(db, user, device_id)
+    device.avatar = save_avatar(file, "device", device.id)
+    db.add(device)
+    db.commit()
+    return DeviceAvatarResponse(data=DeviceAvatarData(avatar=device.avatar))
 
 
 def delete_device(db: Session, user: User, device_id: int) -> None:

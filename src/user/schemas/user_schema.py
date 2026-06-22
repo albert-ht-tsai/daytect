@@ -31,6 +31,18 @@ class MeUpdateResponse(BaseModel):
     message: str = "User profile updated successfully."
 
 
+# ── /users/me/avatar ─────────────────────────────────────────────────────────
+
+class AvatarData(BaseModel):
+    avatar_url: str
+
+
+class AvatarUpdateResponse(BaseModel):
+    success: bool = True
+    data: AvatarData
+    message: str = "Avatar updated successfully."
+
+
 # ── /users/me/body-insight ────────────────────────────────────────────────────
 
 class BodyInsightData(BaseModel):

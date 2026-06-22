@@ -1,7 +1,8 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, File, UploadFile
 
 from src.core.deps import CurrentUser, SessionDep
 from src.user.schemas.user_schema import (
+    AvatarUpdateResponse,
     BmiResponse,
     BodyInsightRequest,
     BodyInsightResponse,
@@ -14,6 +15,7 @@ from src.user.services.user_service import (
     get_body_insight,
     get_me,
     update_me,
+    update_my_avatar,
     upsert_body_insight,
 )
 
@@ -30,6 +32,11 @@ def get_me_endpoint(current_user: CurrentUser):
 @router.put("/me", response_model=MeUpdateResponse)
 def update_me_endpoint(body: MeUpdateRequest, db: SessionDep, current_user: CurrentUser):
     return update_me(db, current_user, body)
+
+
+@router.post("/me/avatar", response_model=AvatarUpdateResponse)
+def update_my_avatar_endpoint(db: SessionDep, current_user: CurrentUser, file: UploadFile = File(...)):
+    return update_my_avatar(db, current_user, file)
 
 
 # ── /users/me/body-insight ────────────────────────────────────────────────────

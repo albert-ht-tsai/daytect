@@ -1,11 +1,14 @@
+import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from src.about.api import router as about_router
 from src.auth.api import router as auth_router
+from src.core.config import AVATAR_DIR
 from src.core.database import init_db
 from src.dashboard.api import router as dashboard_router
 from src.feedback.api import router as feedback_router
@@ -33,6 +36,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+os.makedirs(AVATAR_DIR, exist_ok=True)
+app.mount("/avatar", StaticFiles(directory=AVATAR_DIR), name="avatar")
 
 v1_router = APIRouter(prefix="/v1")
 v1_router.include_router(auth_router)
