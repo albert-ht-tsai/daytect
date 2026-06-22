@@ -16,9 +16,7 @@ from src.user_device.schemas.device_schema import (
 
 
 def _to_data(device: Device) -> DeviceData:
-    data = DeviceData.model_validate(device).model_dump()
-    data["qrcode"] = f"{BASE_URL}/qrcode/device_{device.id}"
-    return DeviceData(**data)
+    return DeviceData.model_validate(device)
 
 
 def register_device(db: Session, user: User, body: RegisterDeviceRequest) -> DeviceDetailResponse:
@@ -38,8 +36,9 @@ def register_device(db: Session, user: User, body: RegisterDeviceRequest) -> Dev
         user_id=user.id,
         mac_address=body.mac_address,
         name=body.name,
-        device_type=body.device_type,
+        avatar=body.avatar,
         group=body.group,
+        qrcode=f"{BASE_URL}/qrcode/{body.mac_address}",
     )
     db.add(device)
     db.commit()

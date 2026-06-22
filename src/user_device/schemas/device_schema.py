@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -10,7 +9,7 @@ class RegisterDeviceRequest(BaseModel):
     user_id: Optional[int] = None
     mac_address: str
     name: str
-    device_type: str = "wearable"
+    avatar: Optional[str] = None
     group: str = "my_devices"
 
 
@@ -21,16 +20,11 @@ class DeviceData(BaseModel):
     user_id: int
     mac_address: str
     name: str
-    device_type: str
     group: str
-    bluetooth_status: str
-    sync_status: str
     battery: Optional[int] = None
-    last_sync_at: Optional[datetime] = None
     is_share: bool
-    avatar: Optional[str] = None
     qrcode: str
-    illustration_key: str
+    avatar: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -45,8 +39,12 @@ class DeviceDetailResponse(BaseModel):
 
 class DeviceSummary(BaseModel):
     id: int
+    mac_address: str
     name: str
+    group: str
     battery: Optional[int] = None
+    is_share: bool
+    qrcode: str
     avatar: Optional[str] = None
 
     model_config = {"from_attributes": True}

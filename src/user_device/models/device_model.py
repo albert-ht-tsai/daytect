@@ -21,6 +21,7 @@ class Device(Base):
     battery = Column(Integer, nullable=True)
     last_sync_at = Column(DateTime, nullable=True)
     avatar = Column(String(255), nullable=True)
+    qrcode = Column(String(255), nullable=False)
     illustration_key = Column(String(50), nullable=False, default="daytect_band_default")
     alert_muted_until = Column(DateTime, nullable=True)
     alert_remind_later_minutes = Column(Integer, nullable=False, default=5)
