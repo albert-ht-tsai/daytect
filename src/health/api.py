@@ -7,8 +7,10 @@ from src.core.deps import CurrentUser, SessionDep
 from src.health.schemas.health_schema import (
     AvailableDatesResponse,
     HealthDataByDateResponse,
-    UploadHealthDataRequest,
     UploadHealthDataResponseData,
+    UploadHealthOriginRequest,
+    UploadHealthOriginResponseData,
+    UploadSleepRequest,
 )
 from src.health.services import health_service
 from src.user_device.services.device_service import get_owned_device
@@ -29,16 +31,29 @@ def _parse_date(value: str | None, default: date_cls) -> date_cls:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail={"code": 400, "message": "Invalid date format"})
 
 
-@router.post("/health/{device_id}", status_code=201)
-def upload_health_data_endpoint(
-    device_id: int, body: UploadHealthDataRequest, db: SessionDep, current_user: CurrentUser
+@router.post("/health/{device_id}/health-origin", status_code=201)
+def upload_health_origin_endpoint(
+    device_id: int, body: UploadHealthOriginRequest, db: SessionDep, current_user: CurrentUser
 ):
     device = get_owned_device(db, current_user, device_id)
-    record_id = health_service.upload_health_data(db, device, body)
+    record_ids = health_service.upload_health_origin_data(db, device, body)
+    return {
+        "success": True,
+        "data": UploadHealthOriginResponseData(record_ids=record_ids),
+        "message": "Health origin data uploaded successfully.",
+    }
+
+
+@router.post("/health/{device_id}/sleep", status_code=201)
+def upload_sleep_endpoint(
+    device_id: int, body: UploadSleepRequest, db: SessionDep, current_user: CurrentUser
+):
+    device = get_owned_device(db, current_user, device_id)
+    record_id = health_service.upload_sleep_data(db, device, body)
     return {
         "success": True,
         "data": UploadHealthDataResponseData(health_record_id=str(record_id)),
-        "message": "Health data uploaded successfully.",
+        "message": "Sleep data uploaded successfully.",
     }
 
 

@@ -234,6 +234,7 @@ class SleepRecord(BaseModel):
     deep: Optional[int] = None
     wake: Optional[int] = None
     total: Optional[int] = None
+    quality: Optional[int] = None
     unit: Literal["minutes"] = "minutes"
 
 

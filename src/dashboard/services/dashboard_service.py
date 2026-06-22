@@ -367,6 +367,7 @@ def _build_today_health_data(record: HealthRecord | None) -> HealthDataTimeline:
             deep=s.get("deep"),
             wake=s.get("wake"),
             total=s.get("total"),
+            quality=s.get("quality"),
         ))
 
     heart_rate_records = [
@@ -740,6 +741,7 @@ def _build_weekly_health_data(records: list[HealthRecord]) -> HealthDataTimeline
                 deep=s.get("deep"),
                 wake=s.get("wake"),
                 total=s.get("total"),
+                quality=s.get("quality"),
             ))
 
         for r in (record.heart_rate or []):
