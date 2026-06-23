@@ -2,9 +2,7 @@ from fastapi import APIRouter
 
 from src.core.deps import CurrentUser, SessionDep
 from src.health.schemas.health_schema import (
-    UploadHealthDataResponseData,
     UploadHealthOriginRequest,
-    UploadHealthOriginResponseData,
     UploadSleepRequest,
 )
 from src.health.services import health_service
@@ -18,10 +16,9 @@ def upload_health_origin_endpoint(
     device_id: int, body: UploadHealthOriginRequest, db: SessionDep, current_user: CurrentUser
 ):
     device = get_owned_device(db, current_user, device_id)
-    record_ids = health_service.upload_health_origin_data(db, device, body)
+    health_service.upload_health_origin_data(db, device, body)
     return {
         "success": True,
-        "data": UploadHealthOriginResponseData(record_ids=record_ids),
         "message": "Health origin data uploaded successfully.",
     }
 
@@ -31,9 +28,8 @@ def upload_sleep_endpoint(
     device_id: int, body: UploadSleepRequest, db: SessionDep, current_user: CurrentUser
 ):
     device = get_owned_device(db, current_user, device_id)
-    record_id = health_service.upload_sleep_data(db, device, body)
+    health_service.upload_sleep_data(db, device, body)
     return {
         "success": True,
-        "data": UploadHealthDataResponseData(health_record_id=str(record_id)),
         "message": "Sleep data uploaded successfully.",
     }

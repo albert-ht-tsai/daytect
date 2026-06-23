@@ -1,36 +1,23 @@
-from typing import Literal, Optional
+from typing import Optional
 
 from pydantic import BaseModel
 
 
-class SleepTimePayload(BaseModel):
-    start: str
-    end: str
-
-
-class SleepValuePayload(BaseModel):
-    light: Optional[int] = None
-    deep: Optional[int] = None
+class SleepRecord(BaseModel):
+    date: str
+    startTime: str
+    endTime: str
+    sleepQuality: Optional[int] = None
     wakeCount: Optional[int] = None
-    total: Optional[int] = None
-    quality: Optional[int] = None
-
-
-class SleepRawPayload(BaseModel):
+    deepSleepTime: Optional[int] = None
+    lightSleepTime: Optional[int] = None
+    totalSleepTime: Optional[int] = None
     caliFlag: Optional[int] = None
     sleepLine: Optional[str] = None
 
 
 class UploadSleepRequest(BaseModel):
-    type: Literal["sleep"] = "sleep"
-    date: str
-    time: SleepTimePayload
-    value: SleepValuePayload
-    raw: Optional[SleepRawPayload] = None
-
-
-class UploadHealthDataResponseData(BaseModel):
-    health_record_id: str
+    records: list[SleepRecord]
 
 
 class HealthOriginRecord(BaseModel):
@@ -70,12 +57,5 @@ class HealthOriginRecord(BaseModel):
 
 
 class UploadHealthOriginRequest(BaseModel):
-    device_id: int
     intervalMinutes: int
     records: list[HealthOriginRecord]
-
-
-class UploadHealthOriginResponseData(BaseModel):
-    record_ids: list[int]
-
-

@@ -18,12 +18,11 @@ def _batch_avg(values: list) -> float | None:
     return round(sum(clean) / len(clean), 2) if clean else None
 
 
-def upload_health_origin_data(db: Session, device: Device, body: UploadHealthOriginRequest) -> list[int]:
+def upload_health_origin_data(db: Session, device: Device, body: UploadHealthOriginRequest) -> None:
     by_date: dict[str, list] = defaultdict(list)
     for rec in body.records:
         by_date[rec.date].append(rec)
 
-    record_ids = []
     for date_str in sorted(by_date):
         recs = by_date[date_str]
         record_date = date_cls.fromisoformat(date_str)
@@ -105,43 +104,39 @@ def upload_health_origin_data(db: Session, device: Device, body: UploadHealthOri
         if bc:
             record.blood_components = bc
 
-        db.flush()
-        record_ids.append(record.id)
-
     db.commit()
-    return record_ids
 
 
-def upload_sleep_data(db: Session, device: Device, body: UploadSleepRequest) -> int:
-    record_date = date_cls.fromisoformat(body.date)
-    record = (
-        db.query(HealthRecord)
-        .filter(HealthRecord.device_id == device.id, HealthRecord.date == record_date)
-        .first()
-    )
-
-    if record is None:
-        record = HealthRecord(
-            device_id=device.id,
-            date=record_date,
-            recorded_at=datetime.now(timezone.utc),
+def upload_sleep_data(db: Session, device: Device, body: UploadSleepRequest) -> None:
+    for rec in body.records:
+        record_date = date_cls.fromisoformat(rec.date)
+        record = (
+            db.query(HealthRecord)
+            .filter(HealthRecord.device_id == device.id, HealthRecord.date == record_date)
+            .first()
         )
-        db.add(record)
 
-    record.sleep = {
-        "start_time": body.time.start,
-        "end_time": body.time.end,
-        "light": body.value.light,
-        "deep": body.value.deep,
-        "wake": body.value.wakeCount,
-        "total": body.value.total,
-        "quality": body.value.quality,
-        "raw": body.raw.model_dump() if body.raw else None,
-    }
+        if record is None:
+            record = HealthRecord(
+                device_id=device.id,
+                date=record_date,
+                recorded_at=datetime.now(timezone.utc),
+            )
+            db.add(record)
+
+        record.sleep = {
+            "start_time": rec.startTime,
+            "end_time": rec.endTime,
+            "light": rec.lightSleepTime,
+            "deep": rec.deepSleepTime,
+            "wake": rec.wakeCount,
+            "total": rec.totalSleepTime,
+            "quality": rec.sleepQuality,
+            "cali_flag": rec.caliFlag,
+            "sleep_line": rec.sleepLine,
+        }
 
     db.commit()
-    db.refresh(record)
-    return record.id
 
 
 
