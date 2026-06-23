@@ -9,7 +9,7 @@ from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from src.core.database import engine
 from src.core.logging import logger
-from src.user.models.user_model import User, UserToken
+from src.profile.models.user_model import User, UserToken
 
 load_dotenv()
 

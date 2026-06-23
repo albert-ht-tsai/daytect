@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 
 from src.feedback.models.feedback_model import Feedback
 from src.feedback.schemas.feedback_schema import SubmitFeedbackRequest
-from src.user.models.user_model import User
+from src.profile.models.user_model import User
 
 
 def submit_feedback(db: Session, user: User, body: SubmitFeedbackRequest) -> Feedback:

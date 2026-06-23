@@ -8,11 +8,11 @@ from alembic import context
 
 from src.core.database import Base, AWS_RDS_URL
 import src.auth.models
-import src.user.models
-import src.user_device.models
+import src.profile.models
+import src.device.models
 import src.health.models
-import src.health.analysis.models
 import src.feedback.models
+import src.report.models
 
 config = context.config
 

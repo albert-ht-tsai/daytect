@@ -1,5 +1,39 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
+
+# ── POST /auth/login ──────────────────────────────────────────────────────────
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class LoginUser(BaseModel):
+    id: int
+    email: str
+    name: str | None = None
+    avatar: str | None = None
+    region: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class LoginData(BaseModel):
+    access_token: str
+    refresh_token: str
+    expires_in: int
+    user: LoginUser
+
+
+class LoginResponse(BaseModel):
+    success: bool = True
+    data: LoginData
+    message: str = "User login successfully."
+
+
+# ── POST /auth/signup ─────────────────────────────────────────────────────────
 
 class SignupRequest(BaseModel):
     email: str
@@ -7,48 +41,67 @@ class SignupRequest(BaseModel):
     code: str
 
 
-class SignupResponse(BaseModel):
-    code: int
-    msg: str
+class SignupData(BaseModel):
+    id: int
+    email: str
+    name: str | None = None
+    created_at: datetime
 
+    model_config = {"from_attributes": True}
+
+
+class SignupResponse(BaseModel):
+    success: bool = True
+    data: SignupData
+    message: str = "Account created successfully."
+
+
+# ── POST /auth/verification-code ──────────────────────────────────────────────
 
 class VerificationCodeRequest(BaseModel):
     email: str
 
 
-class VerificationCodeResponse(BaseModel):
-    msg: str
-    exp_minute: int
-
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-
-class TokenUserInfo(BaseModel):
-    id: int
-    email: str
-    name: str | None = None
-
-
-class TokenData(BaseModel):
-    access_token: str
-    refresh_token: str
+class VerificationCodeData(BaseModel):
     expires_in: int
-    user: TokenUserInfo
 
 
-class TokenResponse(BaseModel):
+class VerificationCodeResponse(BaseModel):
     success: bool = True
-    data: TokenData
-    message: str
+    data: VerificationCodeData
+    message: str = "Verification code sent successfully."
 
 
-class RefreshTokenRequest(BaseModel):
-    refresh_token: str
+# ── POST /auth/refresh-token ──────────────────────────────────────────────────
 
+class RefreshTokenData(BaseModel):
+    access_token: str
+    expires_in: int
+
+
+class RefreshTokenResponse(BaseModel):
+    success: bool = True
+    data: RefreshTokenData
+    message: str = "Access token refreshed successfully."
+
+
+# ── POST /auth/logout ─────────────────────────────────────────────────────────
 
 class LogoutResponse(BaseModel):
-    code: int
-    msg: str
+    success: bool = True
+    data: None = None
+    message: str = "User logout successfully."
+
+
+# ── POST /auth/reset-password ─────────────────────────────────────────────────
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    password: str
+    code: str
+
+
+class ResetPasswordResponse(BaseModel):
+    success: bool = True
+    data: None = None
+    message: str = "Password reset successfully."

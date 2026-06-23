@@ -2,49 +2,54 @@ from fastapi import APIRouter
 
 from src.auth.schemas.auth_schema import (
     LoginRequest,
+    LoginResponse,
     LogoutResponse,
-    RefreshTokenRequest,
+    RefreshTokenResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
     SignupRequest,
     SignupResponse,
-    TokenResponse,
     VerificationCodeRequest,
     VerificationCodeResponse,
 )
 from src.auth.services.auth_service import (
     login,
     logout,
-    refresh_tokens,
+    refresh_access_token,
+    reset_password,
     send_verification_code,
     signup,
 )
 from src.core.deps import CurrentUser, SessionDep, TokenDep
 
-router = APIRouter(tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.post("/login", response_model=LoginResponse)
+def login_endpoint(body: LoginRequest, db: SessionDep):
+    return login(db, body.email, body.password)
 
 
 @router.post("/signup", response_model=SignupResponse, status_code=201)
 def signup_endpoint(body: SignupRequest, db: SessionDep):
-    signup(db, body.email, body.password, body.code)
-    return SignupResponse(code=201, msg="User signup successfully")
+    return signup(db, body.email, body.password, body.code)
 
 
 @router.post("/verification-code", response_model=VerificationCodeResponse)
 def verification_code_endpoint(body: VerificationCodeRequest, db: SessionDep):
-    exp_minute = send_verification_code(db, body.email)
-    return VerificationCodeResponse(msg="Verification code sent to your email", exp_minute=exp_minute)
+    return send_verification_code(db, body.email)
 
 
-@router.post("/signin", response_model=TokenResponse)
-def signin_endpoint(body: LoginRequest, db: SessionDep):
-    return login(db, body.email, body.password)
+@router.post("/refresh-token", response_model=RefreshTokenResponse)
+def refresh_token_endpoint(db: SessionDep, token: TokenDep):
+    return refresh_access_token(db, token)
 
 
-@router.post("/refresh-token", response_model=TokenResponse)
-def refresh_token_endpoint(body: RefreshTokenRequest, db: SessionDep):
-    return refresh_tokens(db, body.refresh_token)
+@router.post("/logout", response_model=LogoutResponse)
+def logout_endpoint(db: SessionDep, current_user: CurrentUser, token: TokenDep):
+    return logout(db, current_user, token)
 
 
-@router.post("/signout", response_model=LogoutResponse)
-def signout_endpoint(db: SessionDep, current_user: CurrentUser, token: TokenDep):
-    logout(db, current_user, token)
-    return LogoutResponse(code=204, msg="User logout successfully")
+@router.post("/reset-password", response_model=ResetPasswordResponse)
+def reset_password_endpoint(body: ResetPasswordRequest, db: SessionDep):
+    return reset_password(db, body.email, body.password, body.code)

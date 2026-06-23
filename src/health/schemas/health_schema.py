@@ -3,6 +3,9 @@ from typing import Optional
 from pydantic import BaseModel
 
 
+# ── POST /health/{device_id}/upload ─────────────────────────────────────────
+
+
 class TimestampValue(BaseModel):
     datetime: str
     value: float
@@ -65,10 +68,6 @@ class RespiratoryRateData(BaseModel):
     values: Optional[list[TimestampValue]] = None
 
 
-class SleepStateData(BaseModel):
-    values: Optional[list[TimestampValue]] = None
-
-
 class ApneaValue(BaseModel):
     datetime: str
     value: int
@@ -108,9 +107,7 @@ class BloodComponentData(BaseModel):
     lDL: Optional[float] = None
 
 
-class HealthRecord30Min(BaseModel):
-    startDatetime: str
-    endDatetime: str
+class HealthRecordBlock(BaseModel):
     heartRate: Optional[HeartRateData] = None
     bloodPressure: Optional[BloodPressureData] = None
     bloodOxygen: Optional[BloodOxygenData] = None
@@ -118,7 +115,6 @@ class HealthRecord30Min(BaseModel):
     skinTemperature: Optional[SkinTemperatureData] = None
     activity: Optional[ActivityData] = None
     respiratoryRate: Optional[RespiratoryRateData] = None
-    sleepState: Optional[SleepStateData] = None
     apnea: Optional[ApneaData] = None
     cardiacLoad: Optional[CardiacLoadData] = None
     sportStatus: Optional[SportStatusData] = None
@@ -126,26 +122,208 @@ class HealthRecord30Min(BaseModel):
     bloodComponent: Optional[BloodComponentData] = None
 
 
-class SleepLineRecord(BaseModel):
-    datetime: str
-    state: str
-    rawValue: int
-
-
-class SleepData(BaseModel):
-    date: str
+class SleepRecordData(BaseModel):
+    date: Optional[str] = None
     sleepQuality: Optional[int] = None
     wakeCount: Optional[int] = None
-    deepSleepMinutes: Optional[int] = None
-    lightSleepMinutes: Optional[int] = None
-    totalSleepMinutes: Optional[int] = None
-    sleepDownTime: Optional[str] = None
-    sleepUpTime: Optional[str] = None
+    deepSleepTime: Optional[int] = None
+    lowSleepTime: Optional[int] = None
+    allSleepTime: Optional[int] = None
+    sleepDown: Optional[str] = None
+    sleepUp: Optional[str] = None
     sleepLine: Optional[str] = None
-    sleepLineRecords: Optional[list[SleepLineRecord]] = None
 
 
-class UploadDailyHealthRequest(BaseModel):
+class UploadHealthRequest(BaseModel):
     date: str
-    sleep: Optional[SleepData] = None
-    healthRecords: list[HealthRecord30Min]
+    sleep_records: Optional[SleepRecordData] = None
+    health_records: list[HealthRecordBlock] = []
+
+
+class UploadHealthResponse(BaseModel):
+    success: bool = True
+    message: str = "Health data uploaded successfully."
+
+
+# ── GET /health/{device_id}/daily & GET /health/{device_id}/weekly ─────────
+
+
+class Period(BaseModel):
+    start_time: str
+    end_time: str
+
+
+class CompareSummary(BaseModel):
+    improve_count: int
+    stable_count: int
+    decrease_count: int
+
+
+class ScalarComparison(BaseModel):
+    current: Optional[float] = None
+    previous: Optional[float] = None
+    unit: str
+    change: Optional[float] = None
+    change_percent: Optional[float] = None
+    status: str
+
+
+class TrendComparison(BaseModel):
+    current: Optional[float] = None
+    previous: Optional[float] = None
+    unit: str
+    change: Optional[float] = None
+    status: str
+
+
+class CardiacLoadComparison(BaseModel):
+    current: Optional[float] = None
+    previous: Optional[float] = None
+    change: Optional[float] = None
+    status: str
+
+
+class BloodPressureValues(BaseModel):
+    systolicAvg: Optional[float] = None
+    diastolicAvg: Optional[float] = None
+
+
+class BloodPressureComparison(BaseModel):
+    current: BloodPressureValues
+    previous: BloodPressureValues
+    unit: str = "mmHg"
+    change: BloodPressureValues
+    status: str
+
+
+class SleepValues(BaseModel):
+    sleepQuality: Optional[float] = None
+    allSleepTime: Optional[float] = None
+    deepSleepTime: Optional[float] = None
+    wakeCount: Optional[float] = None
+
+
+class SleepComparison(BaseModel):
+    current: SleepValues
+    previous: SleepValues
+    unit: str = "minute"
+    status: str
+
+
+class ActivityValues(BaseModel):
+    steps: Optional[int] = None
+    calories: Optional[float] = None
+    distanceKm: Optional[float] = None
+    sportValue: Optional[int] = None
+
+
+class ActivityComparison(BaseModel):
+    current: ActivityValues
+    previous: ActivityValues
+    status: str
+
+
+class DailyMetrics(BaseModel):
+    heartRate: ScalarComparison
+    bloodPressure: BloodPressureComparison
+    bloodOxygen: ScalarComparison
+    bodyTemperature: TrendComparison
+    skinTemperature: TrendComparison
+    sleep: SleepComparison
+    activity: ActivityComparison
+    respiratoryRate: TrendComparison
+    cardiacLoad: CardiacLoadComparison
+
+
+class DailyHealthData(BaseModel):
+    device_id: int
+    date: str
+    compare_date: str
+    period: Period
+    overall_status: str
+    summary: CompareSummary
+    metrics: DailyMetrics
+
+
+class DailyHealthResponse(BaseModel):
+    success: bool = True
+    data: DailyHealthData
+    message: str = "Daily health status retrieved successfully."
+
+
+class WeeklyScalarComparison(BaseModel):
+    current_avg: Optional[float] = None
+    previous_avg: Optional[float] = None
+    unit: str
+    change: Optional[float] = None
+    change_percent: Optional[float] = None
+    status: str
+
+
+class WeeklyTrendComparison(BaseModel):
+    current_avg: Optional[float] = None
+    previous_avg: Optional[float] = None
+    unit: str
+    change: Optional[float] = None
+    status: str
+
+
+class WeeklyCardiacLoadComparison(BaseModel):
+    current_avg: Optional[float] = None
+    previous_avg: Optional[float] = None
+    change: Optional[float] = None
+    status: str
+
+
+class WeeklyBloodPressureComparison(BaseModel):
+    current_avg: BloodPressureValues
+    previous_avg: BloodPressureValues
+    unit: str = "mmHg"
+    change: BloodPressureValues
+    status: str
+
+
+class WeeklySleepComparison(BaseModel):
+    current_avg: SleepValues
+    previous_avg: SleepValues
+    unit: str = "minute"
+    status: str
+
+
+class WeeklyActivityComparison(BaseModel):
+    current_total: ActivityValues
+    previous_total: ActivityValues
+    status: str
+
+
+class WeeklyMetrics(BaseModel):
+    heartRate: WeeklyScalarComparison
+    bloodPressure: WeeklyBloodPressureComparison
+    bloodOxygen: WeeklyScalarComparison
+    bodyTemperature: WeeklyTrendComparison
+    skinTemperature: WeeklyTrendComparison
+    sleep: WeeklySleepComparison
+    activity: WeeklyActivityComparison
+    respiratoryRate: WeeklyTrendComparison
+    cardiacLoad: WeeklyCardiacLoadComparison
+
+
+class WeekRange(BaseModel):
+    start_date: str
+    end_date: str
+
+
+class WeeklyHealthData(BaseModel):
+    device_id: int
+    week: WeekRange
+    compare_week: WeekRange
+    period: Period
+    overall_status: str
+    summary: CompareSummary
+    metrics: WeeklyMetrics
+
+
+class WeeklyHealthResponse(BaseModel):
+    success: bool = True
+    data: WeeklyHealthData
+    message: str = "Weekly health status retrieved successfully."

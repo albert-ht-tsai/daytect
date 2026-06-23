@@ -36,13 +36,13 @@ def init_db() -> None:
 
 def _run_migrations() -> None:
     migrations = [
-        "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS met JSON",
         "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS skin_temperature JSON",
         "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS respiratory_rate JSON",
-        "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS sleep_state JSON",
         "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS apnea JSON",
         "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS cardiac_load JSON",
         "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS sport_status JSON",
+        "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS blood_glucose JSON",
+        "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS blood_component JSON",
     ]
     with engine.begin() as conn:
         for stmt in migrations:
