@@ -36,7 +36,7 @@ Authorization: Bearer <access_token>
 | Method | Path | 說明 |
 |---|---|---|
 | POST | `/v1/signup` | 註冊帳號，body 需帶 `email`/`password`/`code`（先呼叫 verification-code 取得） |
-| POST | `/v1/verification-code` | 寄送 Email 驗證碼，body 帶 `email` |
+| POST | `/v1/verification-code` | 寄送 Email 驗證碼，body 帶 `email`/`type`（`signup` 或 `reset`） |
 | POST | `/v1/signin` | 登入，body 帶 `email`/`password`，回傳 `access_token`/`refresh_token` |
 | POST | `/v1/refresh-token` | 用 refresh token 換新 token，body 帶 `refresh_token` |
 | POST | `/v1/signout` | 登出（需 token），撤銷當前 access token |
@@ -109,7 +109,7 @@ BASE=http://localhost:8000/v1
 
 # 1. 寄驗證碼
 curl -X POST $BASE/verification-code -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com"}'
+  -d '{"email":"test@example.com","type":"signup"}'
 
 # 2. 註冊
 curl -X POST $BASE/signup -H "Content-Type: application/json" \

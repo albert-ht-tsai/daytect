@@ -37,7 +37,7 @@ def signup_endpoint(body: SignupRequest, db: SessionDep):
 
 @router.post("/verification-code", response_model=VerificationCodeResponse)
 def verification_code_endpoint(body: VerificationCodeRequest, db: SessionDep):
-    return send_verification_code(db, body.email)
+    return send_verification_code(db, body.email, body.type)
 
 
 @router.post("/refresh-token", response_model=RefreshTokenResponse)

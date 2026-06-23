@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -60,6 +61,7 @@ class SignupResponse(BaseModel):
 
 class VerificationCodeRequest(BaseModel):
     email: str
+    type: Literal["signup", "reset"]
 
 
 class VerificationCodeData(BaseModel):

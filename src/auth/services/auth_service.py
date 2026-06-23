@@ -24,6 +24,17 @@ CODE_EXP_MINUTE = 5
 ACCESS_TOKEN_EXP_MINUTE = 60
 REFRESH_TOKEN_EXP_DAY = 30
 
+VERIFICATION_CODE_COPY = {
+    "signup": {
+        "subject": "Verify Your Email to Complete Signup",
+        "intro": "Welcome! Use the verification code below to complete your signup.",
+    },
+    "reset": {
+        "subject": "Verify Your Email to Reset Your Password",
+        "intro": "Use the verification code below to reset your password.",
+    },
+}
+
 
 def _get_verified_code(db: Session, email: str, code: str) -> VerificationCode:
     vc = db.query(VerificationCode).filter(VerificationCode.email == email).first()
@@ -50,7 +61,7 @@ def _get_verified_code(db: Session, email: str, code: str) -> VerificationCode:
     return vc
 
 
-def send_verification_code(db: Session, email: str) -> dict:
+def send_verification_code(db: Session, email: str, code_type: str) -> dict:
     code = str(random.randint(1000, 9999))
     expire_at = datetime.now(timezone.utc) + timedelta(minutes=CODE_EXP_MINUTE)
 
@@ -62,11 +73,13 @@ def send_verification_code(db: Session, email: str) -> dict:
         db.add(VerificationCode(email=email, code=code, expire_at=expire_at))
     db.commit()
 
+    copy = VERIFICATION_CODE_COPY[code_type]
     try:
         send_email(
             to=email,
-            subject="Your Verification Code",
+            subject=copy["subject"],
             body=(
+                f"{copy['intro']}\n\n"
                 f"Your verification code is: {code}\n\n"
                 f"This code will expire in {CODE_EXP_MINUTE} minutes.\n"
                 "If you did not request this, please ignore this email."
