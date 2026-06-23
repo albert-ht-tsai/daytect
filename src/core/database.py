@@ -27,7 +27,17 @@ def init_db() -> None:
             conn.execute(text("SELECT 1"))
         logger.info("Database connection successful")
         Base.metadata.create_all(bind=engine)
+        _run_migrations()
         logger.info("Database tables ensured")
     except SQLAlchemyError as e:
         logger.exception("Database initialization failed")
         raise
+
+
+def _run_migrations() -> None:
+    migrations = [
+        "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS met JSON",
+    ]
+    with engine.begin() as conn:
+        for stmt in migrations:
+            conn.execute(text(stmt))
