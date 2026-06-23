@@ -25,6 +25,12 @@ class HealthRecord(Base):
     activity = Column(JSON, nullable=True)
     met = Column(JSON, nullable=True)
     blood_components = Column(JSON, nullable=True)
+    skin_temperature = Column(JSON, nullable=True)
+    respiratory_rate = Column(JSON, nullable=True)
+    sleep_state = Column(JSON, nullable=True)
+    apnea = Column(JSON, nullable=True)
+    cardiac_load = Column(JSON, nullable=True)
+    sport_status = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(
         DateTime,
