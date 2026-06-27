@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from src.device.models.device_model import Device
 from src.health.models.health_record_model import HealthRecord
 from src.health.schemas.health_schema import UploadHealthRequest
 from src.health.services import health_rules
@@ -21,19 +20,20 @@ def _diff(current: float | None, previous: float | None) -> float | None:
     return round(current - previous, 2)
 
 
-# ── POST /health/{device_id}/upload ─────────────────────────────────────────
+# ── POST /health/upload ──────────────────────────────────────────────────────
 
 
-def upload_health(db: Session, device: Device, body: UploadHealthRequest) -> None:
+def upload_health(db: Session, user_id: int, body: UploadHealthRequest) -> None:
     record_date = date_cls.fromisoformat(body.date)
     record = (
         db.query(HealthRecord)
-        .filter(HealthRecord.device_id == device.id, HealthRecord.date == record_date)
+        .filter(HealthRecord.user_id == user_id, HealthRecord.date == record_date)
         .first()
     )
     if record is None:
-        record = HealthRecord(device_id=device.id, date=record_date)
+        record = HealthRecord(user_id=user_id, date=record_date)
         db.add(record)
+    record.source_mac_address = body.mac_address
 
     if body.sleep_records:
         s = body.sleep_records
@@ -379,11 +379,11 @@ def _summary(statuses: list[str]) -> dict:
     }
 
 
-# ── POST /health/{device_id}/daily ──────────────────────────────────────────
+# ── GET /health/daily (used by report pipeline) ──────────────────────────────
 
 
 def get_daily_status(
-    db: Session, device: Device, date_str: str, start_time_str: str, end_time_str: str
+    db: Session, user_id: int, date_str: str, start_time_str: str, end_time_str: str
 ) -> dict | None:
     record_date = date_cls.fromisoformat(date_str)
     compare_date = record_date - timedelta(days=1)
@@ -392,7 +392,7 @@ def get_daily_status(
 
     record = (
         db.query(HealthRecord)
-        .filter(HealthRecord.device_id == device.id, HealthRecord.date == record_date)
+        .filter(HealthRecord.user_id == user_id, HealthRecord.date == record_date)
         .first()
     )
     if record is None:
@@ -400,7 +400,7 @@ def get_daily_status(
 
     previous_record = (
         db.query(HealthRecord)
-        .filter(HealthRecord.device_id == device.id, HealthRecord.date == compare_date)
+        .filter(HealthRecord.user_id == user_id, HealthRecord.date == compare_date)
         .first()
     )
 
@@ -409,7 +409,7 @@ def get_daily_status(
     metrics, statuses = _build_metrics(current, previous)
 
     return {
-        "device_id": device.id,
+        "user_id": user_id,
         "date": record_date.isoformat(),
         "compare_date": compare_date.isoformat(),
         "period": {"start_time": start_time_str, "end_time": end_time_str},

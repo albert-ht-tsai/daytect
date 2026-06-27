@@ -7,11 +7,9 @@ from sqlalchemy.orm import Session
 from src.core import ai_client
 from src.core.database import engine
 from src.core.logging import logger
-from src.device.models.device_model import Device
 from src.health.models.ai_health_summary_model import AiHealthSummaryChunk, AiHealthSummaryJob
 from src.health.models.health_record_model import HealthRecord
 from src.health.services.health_service import (
-    _avg,
     _windowed_activity,
     _windowed_avg,
     _windowed_avg_min_max,
@@ -24,8 +22,10 @@ _MAX_BATCH_INPUT_TOKENS = 30_000
 _MAX_FINAL_INPUT_TOKENS = 60_000
 
 # Metrics dropped first when a batch is over-budget (highest priority kept longest)
-_METRIC_DROP_ORDER = ["activity", "skin_temperature", "cardiac_load", "respiratory_rate",
-                      "body_temperature", "blood_oxygen", "blood_pressure", "heart_rate"]
+_METRIC_DROP_ORDER = [
+    "activity", "skin_temperature", "cardiac_load", "respiratory_rate",
+    "body_temperature", "blood_oxygen", "blood_pressure", "heart_rate",
+]
 
 _TIME_WINDOWS: list[tuple[str, str]] = [
     ("00:00:00", "03:59:59"),
@@ -125,137 +125,55 @@ def _slim_partial_summaries(partials: list[dict]) -> list[dict]:
     ]
 
 
-# ── Multi-device record merging ──────────────────────────────────────────────
-
-
-class _RecordProxy:
-    """Wraps a merged health data dict so it matches the HealthRecord attribute interface."""
-    __slots__ = ("heart_rate", "blood_pressure", "blood_oxygen", "body_temperature",
-                 "skin_temperature", "respiratory_rate", "cardiac_load", "activity", "sleep")
-
-    def __init__(self, data: dict):
-        for attr in self.__slots__:
-            setattr(self, attr, data.get(attr))
-
-
-def _merge_health_records(records: list[HealthRecord]) -> _RecordProxy:
-    """Combine health data from multiple device records for the same day."""
-    hr_values, bp_values, bo_values, bt_values = [], [], [], []
-    st_values, rr_values, cl_values, activity_values = [], [], [], []
-    total_steps = total_sport_value = 0
-    total_calories = total_distance = 0.0
-    has_activity = False
-    sleep_data = None
-
-    for rec in records:
-        if rec.heart_rate:
-            hr_values.extend(rec.heart_rate.get("values") or [])
-        if rec.blood_pressure:
-            bp_values.extend(rec.blood_pressure.get("values") or [])
-        if rec.blood_oxygen:
-            bo_values.extend(rec.blood_oxygen.get("values") or [])
-        if rec.body_temperature:
-            bt_values.extend(rec.body_temperature.get("values") or [])
-        if rec.skin_temperature:
-            st_values.extend(rec.skin_temperature.get("values") or [])
-        if rec.respiratory_rate:
-            rr_values.extend(rec.respiratory_rate.get("values") or [])
-        if rec.cardiac_load:
-            cl_values.extend(rec.cardiac_load.get("values") or [])
-        if rec.activity:
-            has_activity = True
-            total_steps += rec.activity.get("steps") or 0
-            total_calories += rec.activity.get("calories") or 0.0
-            total_distance += rec.activity.get("distanceKm") or 0.0
-            total_sport_value += rec.activity.get("sportValue") or 0
-            activity_values.extend(rec.activity.get("values") or [])
-        if rec.sleep and sleep_data is None:
-            sleep_data = rec.sleep
-
-    merged: dict = {}
-
-    if hr_values:
-        nums = [v["value"] for v in hr_values]
-        merged["heart_rate"] = {"avg": _avg(nums), "min": min(nums), "max": max(nums), "values": hr_values}
-    if bp_values:
-        merged["blood_pressure"] = {
-            "systolicAvg": _avg([v["systolic"] for v in bp_values]),
-            "diastolicAvg": _avg([v["diastolic"] for v in bp_values]),
-            "values": bp_values,
-        }
-    if bo_values:
-        nums = [v["value"] for v in bo_values]
-        merged["blood_oxygen"] = {"avg": _avg(nums), "min": min(nums), "max": max(nums), "values": bo_values}
-    if bt_values:
-        merged["body_temperature"] = {"avg": _avg([v["value"] for v in bt_values]), "values": bt_values}
-    if st_values:
-        merged["skin_temperature"] = {"avg": _avg([v["value"] for v in st_values]), "values": st_values}
-    if rr_values:
-        merged["respiratory_rate"] = {"avg": _avg([v["value"] for v in rr_values]), "values": rr_values}
-    if cl_values:
-        merged["cardiac_load"] = {"avg": _avg([v["value"] for v in cl_values]), "values": cl_values}
-    if has_activity:
-        merged["activity"] = {
-            "steps": total_steps,
-            "calories": round(total_calories, 2),
-            "distanceKm": round(total_distance, 3),
-            "sportValue": total_sport_value,
-            "values": activity_values,
-        }
-    merged["sleep"] = sleep_data
-
-    return _RecordProxy(merged)
-
-
 # ── Metric extraction ────────────────────────────────────────────────────────
 
 
-def _build_batch_metrics(proxy: _RecordProxy, start_t: time_cls, end_t: time_cls) -> dict:
+def _build_batch_metrics(record: HealthRecord, start_t: time_cls, end_t: time_cls) -> dict:
     metrics: dict = {}
 
-    if proxy.heart_rate:
-        wm = _windowed_avg_min_max(proxy.heart_rate, start_t, end_t)
+    if record.heart_rate:
+        wm = _windowed_avg_min_max(record.heart_rate, start_t, end_t)
         if any(v is not None for v in wm.values()):
             metrics["heart_rate"] = {**wm, "unit": "bpm"}
-    if proxy.blood_pressure:
-        wm = _windowed_blood_pressure(proxy.blood_pressure, start_t, end_t)
+    if record.blood_pressure:
+        wm = _windowed_blood_pressure(record.blood_pressure, start_t, end_t)
         if any(v is not None for v in wm.values()):
             metrics["blood_pressure"] = {**wm, "unit": "mmHg"}
-    if proxy.blood_oxygen:
-        wm = _windowed_avg_min_max(proxy.blood_oxygen, start_t, end_t)
+    if record.blood_oxygen:
+        wm = _windowed_avg_min_max(record.blood_oxygen, start_t, end_t)
         if any(v is not None for v in wm.values()):
             metrics["blood_oxygen"] = {**wm, "unit": "%"}
-    if proxy.body_temperature:
-        avg = _windowed_avg(proxy.body_temperature, start_t, end_t)
+    if record.body_temperature:
+        avg = _windowed_avg(record.body_temperature, start_t, end_t)
         if avg is not None:
             metrics["body_temperature"] = {"avg": avg, "unit": "°C"}
-    if proxy.skin_temperature:
-        avg = _windowed_avg(proxy.skin_temperature, start_t, end_t)
+    if record.skin_temperature:
+        avg = _windowed_avg(record.skin_temperature, start_t, end_t)
         if avg is not None:
             metrics["skin_temperature"] = {"avg": avg, "unit": "°C"}
-    if proxy.respiratory_rate:
-        avg = _windowed_avg(proxy.respiratory_rate, start_t, end_t)
+    if record.respiratory_rate:
+        avg = _windowed_avg(record.respiratory_rate, start_t, end_t)
         if avg is not None:
             metrics["respiratory_rate"] = {"avg": avg, "unit": "times/min"}
-    if proxy.cardiac_load:
-        avg = _windowed_avg(proxy.cardiac_load, start_t, end_t)
+    if record.cardiac_load:
+        avg = _windowed_avg(record.cardiac_load, start_t, end_t)
         if avg is not None:
             metrics["cardiac_load"] = {"avg": avg}
-    if proxy.activity:
-        wa = _windowed_activity(proxy.activity, start_t, end_t)
+    if record.activity:
+        wa = _windowed_activity(record.activity, start_t, end_t)
         if any(v is not None for v in wa.values()):
             metrics["activity"] = wa
 
     return metrics
 
 
-def _build_daily_metrics(proxy: _RecordProxy) -> dict:
+def _build_daily_metrics(record: HealthRecord) -> dict:
     full_start = time_cls(0, 0, 0)
     full_end = time_cls(23, 59, 59)
-    metrics = _build_batch_metrics(proxy, full_start, full_end)
+    metrics = _build_batch_metrics(record, full_start, full_end)
 
-    if proxy.sleep:
-        s = proxy.sleep
+    if record.sleep:
+        s = record.sleep
         metrics["sleep"] = {
             "sleepQuality": s.get("sleepQuality"),
             "allSleepTime": s.get("allSleepTime"),
@@ -392,21 +310,15 @@ def _execute_pipeline(db: Session, job: AiHealthSummaryJob, user_id: int) -> Non
     db.commit()
 
     record_date = date_cls.fromisoformat(job.date.isoformat())
-
-    device_ids = [
-        d.id for d in db.query(Device).filter(Device.user_id == user_id).all()
-    ]
-    records = (
+    record = (
         db.query(HealthRecord)
-        .filter(HealthRecord.device_id.in_(device_ids), HealthRecord.date == record_date)
-        .all()
-    ) if device_ids else []
+        .filter(HealthRecord.user_id == user_id, HealthRecord.date == record_date)
+        .first()
+    )
 
-    if not records:
+    if record is None:
         _mark_failed(db, job, "No health data found for the specified date.")
         return
-
-    proxy = _merge_health_records(records)
 
     job.progress_state = "Analyzing"
     job.progress_message = "Analyzing health data..."
@@ -437,7 +349,7 @@ def _execute_pipeline(db: Session, job: AiHealthSummaryJob, user_id: int) -> Non
         start_t = time_cls.fromisoformat(chunk.start_time)
         end_t = time_cls.fromisoformat(chunk.end_time)
 
-        metrics = _build_batch_metrics(proxy, start_t, end_t)
+        metrics = _build_batch_metrics(record, start_t, end_t)
         key_metric_keys = ["heart_rate", "blood_pressure", "blood_oxygen", "activity"]
         missing_fields = [k for k in key_metric_keys if k not in metrics]
         has_enough_data = len(missing_fields) < len(key_metric_keys)
@@ -487,7 +399,7 @@ def _execute_pipeline(db: Session, job: AiHealthSummaryJob, user_id: int) -> Non
         job.progress_message = f"Generating health summary... ({job.completed_batch_count}/{job.batch_count})"
         db.commit()
 
-    daily_metrics = _build_daily_metrics(proxy)
+    daily_metrics = _build_daily_metrics(record)
 
     summaries_for_final = partial_summaries
     final_input = {

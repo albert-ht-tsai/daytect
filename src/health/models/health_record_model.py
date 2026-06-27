@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Column, Date, DateTime, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import JSON, Column, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from src.core.database import Base
@@ -8,11 +8,12 @@ from src.core.database import Base
 
 class HealthRecord(Base):
     __tablename__ = "health_records"
-    __table_args__ = (UniqueConstraint("device_id", "date", name="uq_health_records_device_date"),)
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_health_records_user_date"),)
 
     id = Column(Integer, primary_key=True, index=True)
-    device_id = Column(Integer, ForeignKey("devices.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     date = Column(Date, nullable=False, index=True)
+    source_mac_address = Column(String(17), nullable=True)
     sleep = Column(JSON, nullable=True)
     heart_rate = Column(JSON, nullable=True)
     blood_pressure = Column(JSON, nullable=True)
@@ -34,4 +35,4 @@ class HealthRecord(Base):
         nullable=False,
     )
 
-    device = relationship("Device")
+    user = relationship("User")

@@ -2,7 +2,6 @@ from fastapi import APIRouter, BackgroundTasks, Query
 from pydantic import BaseModel
 
 from src.core.deps import CurrentUser, SessionDep
-from src.device.services.device_service import get_device_by_mac
 from src.health.schemas.health_schema import UploadHealthRequest
 from src.health.services import health_service
 from src.health.services import health_summary_service
@@ -12,8 +11,7 @@ router = APIRouter(tags=["health"])
 
 @router.post("/health/upload", status_code=201)
 def upload_health_endpoint(body: UploadHealthRequest, db: SessionDep, current_user: CurrentUser):
-    device = get_device_by_mac(db, current_user, body.mac_address)
-    health_service.upload_health(db, device, body)
+    health_service.upload_health(db, current_user.id, body)
     return {"success": True, "message": "Health data uploaded successfully."}
 
 
