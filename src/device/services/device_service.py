@@ -24,6 +24,13 @@ def get_owned_device(db: Session, user: User, device_id: int) -> Device:
     return device
 
 
+def get_device_by_mac(db: Session, user: User, mac_address: str) -> Device:
+    device = db.query(Device).filter(Device.mac_address == mac_address, Device.user_id == user.id).first()
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail={"code": 404, "message": "Device not found"})
+    return device
+
+
 # ── POST /devices/bind ──────────────────────────────────────────────────────
 
 def add_device(db: Session, user: User, data: AddDeviceRequest) -> AddDeviceResponse:

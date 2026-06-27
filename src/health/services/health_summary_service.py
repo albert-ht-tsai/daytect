@@ -11,6 +11,7 @@ from src.device.models.device_model import Device
 from src.health.models.ai_health_summary_model import AiHealthSummaryChunk, AiHealthSummaryJob
 from src.health.models.health_record_model import HealthRecord
 from src.health.services.health_service import (
+    _avg,
     _windowed_activity,
     _windowed_avg,
     _windowed_avg_min_max,
@@ -101,7 +102,6 @@ def _estimate_tokens(obj) -> int:
 
 
 def _trim_batch_metrics(metrics: dict, non_metrics_tokens: int) -> dict:
-    """Drop lowest-priority metrics until the total fits within _MAX_BATCH_INPUT_TOKENS."""
     budget = _MAX_BATCH_INPUT_TOKENS - non_metrics_tokens
     result = dict(metrics)
     for key in _METRIC_DROP_ORDER:
@@ -114,7 +114,6 @@ def _trim_batch_metrics(metrics: dict, non_metrics_tokens: int) -> dict:
 
 
 def _slim_partial_summaries(partials: list[dict]) -> list[dict]:
-    """Keep only essential fields from each partial summary to reduce final input size."""
     return [
         {
             "batch_index": ps.get("batch_index"),
@@ -126,59 +125,137 @@ def _slim_partial_summaries(partials: list[dict]) -> list[dict]:
     ]
 
 
-def _build_batch_metrics(record: HealthRecord, start_t: time_cls, end_t: time_cls) -> dict:
+# ── Multi-device record merging ──────────────────────────────────────────────
+
+
+class _RecordProxy:
+    """Wraps a merged health data dict so it matches the HealthRecord attribute interface."""
+    __slots__ = ("heart_rate", "blood_pressure", "blood_oxygen", "body_temperature",
+                 "skin_temperature", "respiratory_rate", "cardiac_load", "activity", "sleep")
+
+    def __init__(self, data: dict):
+        for attr in self.__slots__:
+            setattr(self, attr, data.get(attr))
+
+
+def _merge_health_records(records: list[HealthRecord]) -> _RecordProxy:
+    """Combine health data from multiple device records for the same day."""
+    hr_values, bp_values, bo_values, bt_values = [], [], [], []
+    st_values, rr_values, cl_values, activity_values = [], [], [], []
+    total_steps = total_sport_value = 0
+    total_calories = total_distance = 0.0
+    has_activity = False
+    sleep_data = None
+
+    for rec in records:
+        if rec.heart_rate:
+            hr_values.extend(rec.heart_rate.get("values") or [])
+        if rec.blood_pressure:
+            bp_values.extend(rec.blood_pressure.get("values") or [])
+        if rec.blood_oxygen:
+            bo_values.extend(rec.blood_oxygen.get("values") or [])
+        if rec.body_temperature:
+            bt_values.extend(rec.body_temperature.get("values") or [])
+        if rec.skin_temperature:
+            st_values.extend(rec.skin_temperature.get("values") or [])
+        if rec.respiratory_rate:
+            rr_values.extend(rec.respiratory_rate.get("values") or [])
+        if rec.cardiac_load:
+            cl_values.extend(rec.cardiac_load.get("values") or [])
+        if rec.activity:
+            has_activity = True
+            total_steps += rec.activity.get("steps") or 0
+            total_calories += rec.activity.get("calories") or 0.0
+            total_distance += rec.activity.get("distanceKm") or 0.0
+            total_sport_value += rec.activity.get("sportValue") or 0
+            activity_values.extend(rec.activity.get("values") or [])
+        if rec.sleep and sleep_data is None:
+            sleep_data = rec.sleep
+
+    merged: dict = {}
+
+    if hr_values:
+        nums = [v["value"] for v in hr_values]
+        merged["heart_rate"] = {"avg": _avg(nums), "min": min(nums), "max": max(nums), "values": hr_values}
+    if bp_values:
+        merged["blood_pressure"] = {
+            "systolicAvg": _avg([v["systolic"] for v in bp_values]),
+            "diastolicAvg": _avg([v["diastolic"] for v in bp_values]),
+            "values": bp_values,
+        }
+    if bo_values:
+        nums = [v["value"] for v in bo_values]
+        merged["blood_oxygen"] = {"avg": _avg(nums), "min": min(nums), "max": max(nums), "values": bo_values}
+    if bt_values:
+        merged["body_temperature"] = {"avg": _avg([v["value"] for v in bt_values]), "values": bt_values}
+    if st_values:
+        merged["skin_temperature"] = {"avg": _avg([v["value"] for v in st_values]), "values": st_values}
+    if rr_values:
+        merged["respiratory_rate"] = {"avg": _avg([v["value"] for v in rr_values]), "values": rr_values}
+    if cl_values:
+        merged["cardiac_load"] = {"avg": _avg([v["value"] for v in cl_values]), "values": cl_values}
+    if has_activity:
+        merged["activity"] = {
+            "steps": total_steps,
+            "calories": round(total_calories, 2),
+            "distanceKm": round(total_distance, 3),
+            "sportValue": total_sport_value,
+            "values": activity_values,
+        }
+    merged["sleep"] = sleep_data
+
+    return _RecordProxy(merged)
+
+
+# ── Metric extraction ────────────────────────────────────────────────────────
+
+
+def _build_batch_metrics(proxy: _RecordProxy, start_t: time_cls, end_t: time_cls) -> dict:
     metrics: dict = {}
 
-    if record.heart_rate:
-        wm = _windowed_avg_min_max(record.heart_rate, start_t, end_t)
+    if proxy.heart_rate:
+        wm = _windowed_avg_min_max(proxy.heart_rate, start_t, end_t)
         if any(v is not None for v in wm.values()):
             metrics["heart_rate"] = {**wm, "unit": "bpm"}
-
-    if record.blood_pressure:
-        wm = _windowed_blood_pressure(record.blood_pressure, start_t, end_t)
+    if proxy.blood_pressure:
+        wm = _windowed_blood_pressure(proxy.blood_pressure, start_t, end_t)
         if any(v is not None for v in wm.values()):
             metrics["blood_pressure"] = {**wm, "unit": "mmHg"}
-
-    if record.blood_oxygen:
-        wm = _windowed_avg_min_max(record.blood_oxygen, start_t, end_t)
+    if proxy.blood_oxygen:
+        wm = _windowed_avg_min_max(proxy.blood_oxygen, start_t, end_t)
         if any(v is not None for v in wm.values()):
             metrics["blood_oxygen"] = {**wm, "unit": "%"}
-
-    if record.body_temperature:
-        avg = _windowed_avg(record.body_temperature, start_t, end_t)
+    if proxy.body_temperature:
+        avg = _windowed_avg(proxy.body_temperature, start_t, end_t)
         if avg is not None:
             metrics["body_temperature"] = {"avg": avg, "unit": "°C"}
-
-    if record.skin_temperature:
-        avg = _windowed_avg(record.skin_temperature, start_t, end_t)
+    if proxy.skin_temperature:
+        avg = _windowed_avg(proxy.skin_temperature, start_t, end_t)
         if avg is not None:
             metrics["skin_temperature"] = {"avg": avg, "unit": "°C"}
-
-    if record.respiratory_rate:
-        avg = _windowed_avg(record.respiratory_rate, start_t, end_t)
+    if proxy.respiratory_rate:
+        avg = _windowed_avg(proxy.respiratory_rate, start_t, end_t)
         if avg is not None:
             metrics["respiratory_rate"] = {"avg": avg, "unit": "times/min"}
-
-    if record.cardiac_load:
-        avg = _windowed_avg(record.cardiac_load, start_t, end_t)
+    if proxy.cardiac_load:
+        avg = _windowed_avg(proxy.cardiac_load, start_t, end_t)
         if avg is not None:
             metrics["cardiac_load"] = {"avg": avg}
-
-    if record.activity:
-        wa = _windowed_activity(record.activity, start_t, end_t)
+    if proxy.activity:
+        wa = _windowed_activity(proxy.activity, start_t, end_t)
         if any(v is not None for v in wa.values()):
             metrics["activity"] = wa
 
     return metrics
 
 
-def _build_daily_metrics(record: HealthRecord) -> dict:
+def _build_daily_metrics(proxy: _RecordProxy) -> dict:
     full_start = time_cls(0, 0, 0)
     full_end = time_cls(23, 59, 59)
-    metrics = _build_batch_metrics(record, full_start, full_end)
+    metrics = _build_batch_metrics(proxy, full_start, full_end)
 
-    if record.sleep:
-        s = record.sleep
+    if proxy.sleep:
+        s = proxy.sleep
         metrics["sleep"] = {
             "sleepQuality": s.get("sleepQuality"),
             "allSleepTime": s.get("allSleepTime"),
@@ -191,10 +268,10 @@ def _build_daily_metrics(record: HealthRecord) -> dict:
     return metrics
 
 
-# ── POST /health/{device_id}/summary/request ────────────────────────────────
+# ── POST /health/summary/request ────────────────────────────────────────────
 
 
-def request_summary(db: Session, device: Device, date_str: str, background_tasks: BackgroundTasks) -> dict:
+def request_summary(db: Session, user_id: int, date_str: str, background_tasks: BackgroundTasks) -> dict:
     from datetime import date as date_cls
 
     try:
@@ -203,7 +280,7 @@ def request_summary(db: Session, device: Device, date_str: str, background_tasks
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail={"code": 400, "message": "Invalid date format"})
 
     job = AiHealthSummaryJob(
-        device_id=device.id,
+        user_id=user_id,
         date=date_str,
         status="queued",
         progress_state="Queued",
@@ -215,7 +292,7 @@ def request_summary(db: Session, device: Device, date_str: str, background_tasks
     db.commit()
     db.refresh(job)
 
-    background_tasks.add_task(_run_summary_pipeline, device.id, job.id)
+    background_tasks.add_task(_run_summary_pipeline, user_id, job.id)
 
     return {
         "job_id": job.job_id,
@@ -229,13 +306,13 @@ def request_summary(db: Session, device: Device, date_str: str, background_tasks
     }
 
 
-# ── GET /health/{device_id}/summary/progress ────────────────────────────────
+# ── GET /health/summary/progress ────────────────────────────────────────────
 
 
-def _get_owned_job(db: Session, device: Device, job_id: str) -> AiHealthSummaryJob:
+def _get_owned_job(db: Session, user_id: int, job_id: str) -> AiHealthSummaryJob:
     job = (
         db.query(AiHealthSummaryJob)
-        .filter(AiHealthSummaryJob.job_id == job_id, AiHealthSummaryJob.device_id == device.id)
+        .filter(AiHealthSummaryJob.job_id == job_id, AiHealthSummaryJob.user_id == user_id)
         .first()
     )
     if job is None:
@@ -243,8 +320,8 @@ def _get_owned_job(db: Session, device: Device, job_id: str) -> AiHealthSummaryJ
     return job
 
 
-def get_progress(db: Session, device: Device, job_id: str) -> dict:
-    job = _get_owned_job(db, device, job_id)
+def get_progress(db: Session, user_id: int, job_id: str) -> dict:
+    job = _get_owned_job(db, user_id, job_id)
     return {
         "job_id": job.job_id,
         "status": job.status,
@@ -257,11 +334,11 @@ def get_progress(db: Session, device: Device, job_id: str) -> dict:
     }
 
 
-# ── GET /health/{device_id}/summary/result ──────────────────────────────────
+# ── GET /health/summary/result ───────────────────────────────────────────────
 
 
-def get_result(db: Session, device: Device, job_id: str) -> dict:
-    job = _get_owned_job(db, device, job_id)
+def get_result(db: Session, user_id: int, job_id: str) -> dict:
+    job = _get_owned_job(db, user_id, job_id)
     if job.status != "done":
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -291,13 +368,13 @@ def _mark_failed(db: Session, job: AiHealthSummaryJob, message: str) -> None:
     db.commit()
 
 
-def _run_summary_pipeline(device_id: int, job_pk: int) -> None:
+def _run_summary_pipeline(user_id: int, job_pk: int) -> None:
     with Session(engine) as db:
         job = db.get(AiHealthSummaryJob, job_pk)
         if job is None:
             return
         try:
-            _execute_pipeline(db, job, device_id)
+            _execute_pipeline(db, job, user_id)
         except Exception as e:  # noqa: BLE001
             logger.exception("Summary pipeline crashed for job %s", job.job_id)
             db.rollback()
@@ -306,7 +383,7 @@ def _run_summary_pipeline(device_id: int, job_pk: int) -> None:
                 _mark_failed(db, job, str(e))
 
 
-def _execute_pipeline(db: Session, job: AiHealthSummaryJob, device_id: int) -> None:
+def _execute_pipeline(db: Session, job: AiHealthSummaryJob, user_id: int) -> None:
     from datetime import date as date_cls
 
     job.status = "processing"
@@ -315,15 +392,21 @@ def _execute_pipeline(db: Session, job: AiHealthSummaryJob, device_id: int) -> N
     db.commit()
 
     record_date = date_cls.fromisoformat(job.date.isoformat())
-    record = (
-        db.query(HealthRecord)
-        .filter(HealthRecord.device_id == device_id, HealthRecord.date == record_date)
-        .first()
-    )
 
-    if record is None:
+    device_ids = [
+        d.id for d in db.query(Device).filter(Device.user_id == user_id).all()
+    ]
+    records = (
+        db.query(HealthRecord)
+        .filter(HealthRecord.device_id.in_(device_ids), HealthRecord.date == record_date)
+        .all()
+    ) if device_ids else []
+
+    if not records:
         _mark_failed(db, job, "No health data found for the specified date.")
         return
+
+    proxy = _merge_health_records(records)
 
     job.progress_state = "Analyzing"
     job.progress_message = "Analyzing health data..."
@@ -354,14 +437,14 @@ def _execute_pipeline(db: Session, job: AiHealthSummaryJob, device_id: int) -> N
         start_t = time_cls.fromisoformat(chunk.start_time)
         end_t = time_cls.fromisoformat(chunk.end_time)
 
-        metrics = _build_batch_metrics(record, start_t, end_t)
+        metrics = _build_batch_metrics(proxy, start_t, end_t)
         key_metric_keys = ["heart_rate", "blood_pressure", "blood_oxygen", "activity"]
         missing_fields = [k for k in key_metric_keys if k not in metrics]
         has_enough_data = len(missing_fields) < len(key_metric_keys)
 
         non_metrics = {
             "job_id": job.job_id,
-            "device_id": device_id,
+            "user_id": user_id,
             "date": job.date.isoformat(),
             "batch_index": chunk.batch_index,
             "batch_count": job.batch_count,
@@ -404,11 +487,11 @@ def _execute_pipeline(db: Session, job: AiHealthSummaryJob, device_id: int) -> N
         job.progress_message = f"Generating health summary... ({job.completed_batch_count}/{job.batch_count})"
         db.commit()
 
-    daily_metrics = _build_daily_metrics(record)
+    daily_metrics = _build_daily_metrics(proxy)
 
     summaries_for_final = partial_summaries
     final_input = {
-        "device_id": device_id,
+        "user_id": user_id,
         "date": job.date.isoformat(),
         "period": {"start_time": "00:00:00", "end_time": "23:59:59"},
         "daily_metrics": daily_metrics,

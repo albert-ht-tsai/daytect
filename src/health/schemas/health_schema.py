@@ -3,7 +3,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 
-# ── POST /health/{device_id}/upload ─────────────────────────────────────────
+# ── POST /health/upload ──────────────────────────────────────────────────────
 
 
 class TimestampValue(BaseModel):
@@ -135,6 +135,7 @@ class SleepRecordData(BaseModel):
 
 
 class UploadHealthRequest(BaseModel):
+    mac_address: str
     date: str
     sleep_records: Optional[SleepRecordData] = None
     health_records: list[HealthRecordBlock] = []

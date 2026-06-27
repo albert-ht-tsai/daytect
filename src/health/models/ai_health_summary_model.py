@@ -1,4 +1,3 @@
-from datetime import date as date_cls
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -17,7 +16,7 @@ class AiHealthSummaryJob(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     job_id = Column(String, unique=True, index=True, nullable=False, default=_new_job_id)
-    device_id = Column(Integer, ForeignKey("devices.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     date = Column(Date, nullable=False, index=True)
 
     status = Column(String, nullable=False, default="queued")
@@ -39,7 +38,7 @@ class AiHealthSummaryJob(Base):
     )
     completed_at = Column(DateTime, nullable=True)
 
-    device = relationship("Device")
+    user = relationship("User")
     chunks = relationship("AiHealthSummaryChunk", back_populates="job", cascade="all, delete-orphan")
 
 

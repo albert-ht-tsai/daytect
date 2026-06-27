@@ -43,6 +43,9 @@ def _run_migrations() -> None:
         "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS sport_status JSON",
         "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS blood_glucose JSON",
         "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS blood_component JSON",
+        # ai_health_summary_jobs: migrate device_id → user_id
+        "ALTER TABLE ai_health_summary_jobs ADD COLUMN IF NOT EXISTS user_id INTEGER",
+        "ALTER TABLE ai_health_summary_jobs DROP COLUMN IF EXISTS device_id",
     ]
     with engine.begin() as conn:
         for stmt in migrations:
