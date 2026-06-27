@@ -17,6 +17,15 @@ from src.health.services.health_service import (
     _windowed_blood_pressure,
 )
 
+# Token budget constants (1 token ≈ 4 chars, same heuristic as report module)
+_CHARS_PER_TOKEN = 4
+_MAX_BATCH_INPUT_TOKENS = 30_000
+_MAX_FINAL_INPUT_TOKENS = 60_000
+
+# Metrics dropped first when a batch is over-budget (highest priority kept longest)
+_METRIC_DROP_ORDER = ["activity", "skin_temperature", "cardiac_load", "respiratory_rate",
+                      "body_temperature", "blood_oxygen", "blood_pressure", "heart_rate"]
+
 _TIME_WINDOWS: list[tuple[str, str]] = [
     ("00:00:00", "03:59:59"),
     ("04:00:00", "07:59:59"),
@@ -84,6 +93,37 @@ def _now() -> datetime:
 
 def _fmt_ts_ms(dt: datetime | None) -> int | None:
     return int(dt.timestamp() * 1000) if dt else None
+
+
+def _estimate_tokens(obj) -> int:
+    text = obj if isinstance(obj, str) else json.dumps(obj, default=str)
+    return max(1, len(text) // _CHARS_PER_TOKEN)
+
+
+def _trim_batch_metrics(metrics: dict, non_metrics_tokens: int) -> dict:
+    """Drop lowest-priority metrics until the total fits within _MAX_BATCH_INPUT_TOKENS."""
+    budget = _MAX_BATCH_INPUT_TOKENS - non_metrics_tokens
+    result = dict(metrics)
+    for key in _METRIC_DROP_ORDER:
+        if _estimate_tokens(result) <= budget:
+            break
+        if key in result:
+            result.pop(key)
+            logger.warning("Token budget: dropped metric '%s' from batch input", key)
+    return result
+
+
+def _slim_partial_summaries(partials: list[dict]) -> list[dict]:
+    """Keep only essential fields from each partial summary to reduce final input size."""
+    return [
+        {
+            "batch_index": ps.get("batch_index"),
+            "time_range": ps.get("time_range"),
+            "key_findings": (ps.get("key_findings") or [])[:3],
+            "attention_metrics": ps.get("attention_metrics"),
+        }
+        for ps in partials
+    ]
 
 
 def _build_batch_metrics(record: HealthRecord, start_t: time_cls, end_t: time_cls) -> dict:
@@ -319,16 +359,25 @@ def _execute_pipeline(db: Session, job: AiHealthSummaryJob, device_id: int) -> N
         missing_fields = [k for k in key_metric_keys if k not in metrics]
         has_enough_data = len(missing_fields) < len(key_metric_keys)
 
-        batch_input = {
+        non_metrics = {
             "job_id": job.job_id,
             "device_id": device_id,
             "date": job.date.isoformat(),
             "batch_index": chunk.batch_index,
             "batch_count": job.batch_count,
             "time_range": {"start_time": chunk.start_time, "end_time": chunk.end_time},
-            "metrics": metrics,
             "data_quality": {"missing_fields": missing_fields, "has_enough_data": has_enough_data},
         }
+        non_metrics_tokens = _estimate_tokens(non_metrics)
+        if _estimate_tokens(metrics) + non_metrics_tokens > _MAX_BATCH_INPUT_TOKENS:
+            logger.warning(
+                "Batch %d estimated %d tokens, trimming metrics",
+                chunk.batch_index,
+                _estimate_tokens(metrics) + non_metrics_tokens,
+            )
+            metrics = _trim_batch_metrics(metrics, non_metrics_tokens)
+
+        batch_input = {**non_metrics, "metrics": metrics}
 
         chunk.status = "processing"
         chunk.input_json = batch_input
@@ -357,13 +406,21 @@ def _execute_pipeline(db: Session, job: AiHealthSummaryJob, device_id: int) -> N
 
     daily_metrics = _build_daily_metrics(record)
 
+    summaries_for_final = partial_summaries
     final_input = {
         "device_id": device_id,
         "date": job.date.isoformat(),
         "period": {"start_time": "00:00:00", "end_time": "23:59:59"},
         "daily_metrics": daily_metrics,
-        "partial_summaries": partial_summaries,
+        "partial_summaries": summaries_for_final,
     }
+    if _estimate_tokens(final_input) > _MAX_FINAL_INPUT_TOKENS:
+        logger.warning(
+            "Final summary input estimated %d tokens, slimming partial summaries",
+            _estimate_tokens(final_input),
+        )
+        summaries_for_final = _slim_partial_summaries(partial_summaries)
+        final_input["partial_summaries"] = summaries_for_final
 
     try:
         final_result, _ = ai_client.generate_json(
