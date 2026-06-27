@@ -5,6 +5,6 @@ from pydantic import BaseModel
 
 
 class CreateReportTaskRequest(BaseModel):
-    report_type: Literal["daily", "weekly"]
+    report_type: Literal["daily"]
     date: date_cls
     language: str = "en"

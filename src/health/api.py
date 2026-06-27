@@ -46,20 +46,6 @@ def get_daily_health_status_endpoint(
     return {"success": True, "data": data, "message": "Daily health status retrieved successfully."}
 
 
-@router.get("/health/{device_id}/weekly")
-def get_weekly_health_status_endpoint(
-    device_id: int, db: SessionDep, current_user: CurrentUser, date: str = Query(...)
-):
-    device = get_owned_device(db, current_user, device_id)
-    _parse_date(date)
-    data = health_service.get_weekly_status(db, device, date, _FULL_DAY_START, _FULL_DAY_END)
-    if data is None:
-        return JSONResponse(
-            status_code=404,
-            content={"success": False, "data": None, "message": "Weekly health data not found."},
-        )
-    return {"success": True, "data": data, "message": "Weekly health status retrieved successfully."}
-
 
 class _SummaryRequestBody(BaseModel):
     date: str

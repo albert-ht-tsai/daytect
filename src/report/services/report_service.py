@@ -269,12 +269,8 @@ def build_result_body(task: ReportTask) -> dict:
         "created_at": _fmt(result.created_at),
         "completed_at": _fmt(result.completed_at),
     }
-    if task.report_type == "weekly":
-        body["week"] = result.date_range["current"]
-        body["compare_week"] = result.date_range["previous"]
-    else:
-        body["date"] = result.date_range["current"]["start_date"]
-        body["compare_date"] = result.date_range["previous"]["start_date"]
+    body["date"] = result.date_range["current"]["start_date"]
+    body["compare_date"] = result.date_range["previous"]["start_date"]
     return body
 
 
@@ -320,9 +316,7 @@ def retry_task(db: Session, device: Device, report_task_id: str, background_task
 # ── Internal pipeline (runs in BackgroundTasks threadpool) ─────────────────
 
 
-def _date_range(report_type: str, health_data: dict) -> dict:
-    if report_type == "weekly":
-        return {"current": health_data["week"], "previous": health_data["compare_week"]}
+def _date_range(health_data: dict) -> dict:
     return {
         "current": {"start_date": health_data["date"], "end_date": health_data["date"]},
         "previous": {"start_date": health_data["compare_date"], "end_date": health_data["compare_date"]},
@@ -366,10 +360,7 @@ def _execute_pipeline(db: Session, task: ReportTask, device_id: int) -> None:
     db.commit()
 
     date_str = task.date.isoformat()
-    if task.report_type == "weekly":
-        health_data = health_service.get_weekly_status(db, device, date_str, _FULL_DAY_START, _FULL_DAY_END)
-    else:
-        health_data = health_service.get_daily_status(db, device, date_str, _FULL_DAY_START, _FULL_DAY_END)
+    health_data = health_service.get_daily_status(db, device, date_str, _FULL_DAY_START, _FULL_DAY_END)
 
     if health_data is None:
         _mark_failed(db, task, "HEALTH_DATA_NOT_FOUND", "Health data not found.", failed_step="prepare_data")
@@ -464,7 +455,7 @@ def _execute_pipeline(db: Session, task: ReportTask, device_id: int) -> None:
     final_input = {
         "report_type": task.report_type,
         "device_id": task.device_id,
-        "date_range": _date_range(task.report_type, health_data),
+        "date_range": _date_range(health_data),
         "overall_status": health_data["overall_status"],
         "summary": health_data["summary"],
         "batch_analyses": batch_analyses,
@@ -496,7 +487,7 @@ def _execute_pipeline(db: Session, task: ReportTask, device_id: int) -> None:
         device_id=task.device_id,
         report_type=task.report_type,
         date=task.date,
-        date_range=_date_range(task.report_type, health_data),
+        date_range=_date_range(health_data),
         overall_status=health_data["overall_status"],
         summary=health_data["summary"],
         ai_report=ai_report,

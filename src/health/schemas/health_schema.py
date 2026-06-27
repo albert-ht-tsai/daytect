@@ -145,7 +145,7 @@ class UploadHealthResponse(BaseModel):
     message: str = "Health data uploaded successfully."
 
 
-# ── GET /health/{device_id}/daily & GET /health/{device_id}/weekly ─────────
+# ── GET /health/{device_id}/daily ───────────────────────────────────────────
 
 
 class Period(BaseModel):
@@ -251,79 +251,3 @@ class DailyHealthResponse(BaseModel):
     message: str = "Daily health status retrieved successfully."
 
 
-class WeeklyScalarComparison(BaseModel):
-    current_avg: Optional[float] = None
-    previous_avg: Optional[float] = None
-    unit: str
-    change: Optional[float] = None
-    change_percent: Optional[float] = None
-    status: str
-
-
-class WeeklyTrendComparison(BaseModel):
-    current_avg: Optional[float] = None
-    previous_avg: Optional[float] = None
-    unit: str
-    change: Optional[float] = None
-    status: str
-
-
-class WeeklyCardiacLoadComparison(BaseModel):
-    current_avg: Optional[float] = None
-    previous_avg: Optional[float] = None
-    change: Optional[float] = None
-    status: str
-
-
-class WeeklyBloodPressureComparison(BaseModel):
-    current_avg: BloodPressureValues
-    previous_avg: BloodPressureValues
-    unit: str = "mmHg"
-    change: BloodPressureValues
-    status: str
-
-
-class WeeklySleepComparison(BaseModel):
-    current_avg: SleepValues
-    previous_avg: SleepValues
-    unit: str = "minute"
-    status: str
-
-
-class WeeklyActivityComparison(BaseModel):
-    current_total: ActivityValues
-    previous_total: ActivityValues
-    status: str
-
-
-class WeeklyMetrics(BaseModel):
-    heartRate: WeeklyScalarComparison
-    bloodPressure: WeeklyBloodPressureComparison
-    bloodOxygen: WeeklyScalarComparison
-    bodyTemperature: WeeklyTrendComparison
-    skinTemperature: WeeklyTrendComparison
-    sleep: WeeklySleepComparison
-    activity: WeeklyActivityComparison
-    respiratoryRate: WeeklyTrendComparison
-    cardiacLoad: WeeklyCardiacLoadComparison
-
-
-class WeekRange(BaseModel):
-    start_date: str
-    end_date: str
-
-
-class WeeklyHealthData(BaseModel):
-    device_id: int
-    week: WeekRange
-    compare_week: WeekRange
-    period: Period
-    overall_status: str
-    summary: CompareSummary
-    metrics: WeeklyMetrics
-
-
-class WeeklyHealthResponse(BaseModel):
-    success: bool = True
-    data: WeeklyHealthData
-    message: str = "Weekly health status retrieved successfully."
