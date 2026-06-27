@@ -46,11 +46,17 @@ def _run_migrations() -> None:
         # ai_health_summary_jobs: migrate device_id → user_id
         "ALTER TABLE ai_health_summary_jobs ADD COLUMN IF NOT EXISTS user_id INTEGER",
         "ALTER TABLE ai_health_summary_jobs DROP COLUMN IF EXISTS device_id",
+        # backfill: remove orphaned rows that have no user_id (legacy device-based data)
+        "DELETE FROM ai_health_summary_jobs WHERE user_id IS NULL",
+        "ALTER TABLE ai_health_summary_jobs ALTER COLUMN user_id SET NOT NULL",
         # health_records: migrate device_id → user_id, add source_mac_address
         "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS user_id INTEGER",
         "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS source_mac_address VARCHAR(17)",
         "ALTER TABLE health_records DROP COLUMN IF EXISTS device_id",
         "ALTER TABLE health_records DROP CONSTRAINT IF EXISTS uq_health_records_device_date",
+        # backfill: remove orphaned rows that have no user_id (legacy device-based data)
+        "DELETE FROM health_records WHERE user_id IS NULL",
+        "ALTER TABLE health_records ALTER COLUMN user_id SET NOT NULL",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_health_records_user_date ON health_records (user_id, date)",
     ]
     with engine.begin() as conn:

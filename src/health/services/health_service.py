@@ -23,6 +23,13 @@ def _diff(current: float | None, previous: float | None) -> float | None:
 # ── POST /health/upload ──────────────────────────────────────────────────────
 
 
+def _merge_by_datetime(existing: list[dict] | None, incoming: list[dict]) -> list[dict]:
+    """Merge incoming values into existing list, deduplicating by datetime (incoming wins)."""
+    pool = {v["datetime"]: v for v in (existing or [])}
+    pool.update({v["datetime"]: v for v in incoming})
+    return sorted(pool.values(), key=lambda v: v.get("datetime", ""))
+
+
 def upload_health(db: Session, user_id: int, body: UploadHealthRequest) -> None:
     record_date = date_cls.fromisoformat(body.date)
     record = (
@@ -49,54 +56,46 @@ def upload_health(db: Session, user_id: int, body: UploadHealthRequest) -> None:
             "sleepLine": s.sleepLine,
         }
 
-    hr_values: list[dict] = []
-    bp_values: list[dict] = []
-    bo_values: list[dict] = []
-    bt_values: list[dict] = []
-    st_values: list[dict] = []
-    rr_values: list[dict] = []
-    apnea_results: list[dict] = []
-    hypoxia_times: list[dict] = []
-    is_hypoxias: list[dict] = []
-    cl_values: list[dict] = []
-    sport_status_values: list[dict] = []
+    hr_incoming: list[dict] = []
+    bp_incoming: list[dict] = []
+    bo_incoming: list[dict] = []
+    bt_incoming: list[dict] = []
+    st_incoming: list[dict] = []
+    rr_incoming: list[dict] = []
+    apnea_results_incoming: list[dict] = []
+    hypoxia_times_incoming: list[dict] = []
+    is_hypoxias_incoming: list[dict] = []
+    cl_incoming: list[dict] = []
+    sport_status_incoming: list[dict] = []
     sport_status_version: int | None = None
-    activity_values: list[dict] = []
-    total_steps = 0
-    total_calories = 0.0
-    total_distance = 0.0
-    total_sport_value = 0
+    activity_incoming: list[dict] = []
     has_activity = False
     blood_glucose: dict | None = None
     blood_component: dict | None = None
 
     for block in body.health_records:
         if block.heartRate and block.heartRate.values:
-            hr_values += [{"datetime": v.datetime, "value": v.value} for v in block.heartRate.values]
+            hr_incoming += [{"datetime": v.datetime, "value": v.value} for v in block.heartRate.values]
 
         if block.bloodPressure and block.bloodPressure.values:
-            bp_values += [
+            bp_incoming += [
                 {"datetime": v.datetime, "systolic": v.systolic, "diastolic": v.diastolic}
                 for v in block.bloodPressure.values
             ]
 
         if block.bloodOxygen and block.bloodOxygen.values:
-            bo_values += [{"datetime": v.datetime, "value": v.value} for v in block.bloodOxygen.values]
+            bo_incoming += [{"datetime": v.datetime, "value": v.value} for v in block.bloodOxygen.values]
 
         if block.bodyTemperature and block.bodyTemperature.values:
-            bt_values += [{"datetime": v.datetime, "value": v.value} for v in block.bodyTemperature.values]
+            bt_incoming += [{"datetime": v.datetime, "value": v.value} for v in block.bodyTemperature.values]
 
         if block.skinTemperature and block.skinTemperature.values:
-            st_values += [{"datetime": v.datetime, "value": v.value} for v in block.skinTemperature.values]
+            st_incoming += [{"datetime": v.datetime, "value": v.value} for v in block.skinTemperature.values]
 
         if block.activity:
             has_activity = True
-            total_steps += block.activity.steps or 0
-            total_calories += block.activity.calories or 0.0
-            total_distance += block.activity.distanceKm or 0.0
-            total_sport_value += block.activity.sportValue or 0
             if block.activity.values:
-                activity_values += [
+                activity_incoming += [
                     {
                         "datetime": v.datetime,
                         "steps": v.steps,
@@ -108,20 +107,20 @@ def upload_health(db: Session, user_id: int, body: UploadHealthRequest) -> None:
                 ]
 
         if block.respiratoryRate and block.respiratoryRate.values:
-            rr_values += [{"datetime": v.datetime, "value": v.value} for v in block.respiratoryRate.values]
+            rr_incoming += [{"datetime": v.datetime, "value": v.value} for v in block.respiratoryRate.values]
 
         if block.apnea:
-            apnea_results += [{"datetime": v.datetime, "value": v.value} for v in (block.apnea.apneaResults or [])]
-            hypoxia_times += [{"datetime": v.datetime, "value": v.value} for v in (block.apnea.hypoxiaTimes or [])]
-            is_hypoxias += [{"datetime": v.datetime, "value": v.value} for v in (block.apnea.isHypoxias or [])]
+            apnea_results_incoming += [{"datetime": v.datetime, "value": v.value} for v in (block.apnea.apneaResults or [])]
+            hypoxia_times_incoming += [{"datetime": v.datetime, "value": v.value} for v in (block.apnea.hypoxiaTimes or [])]
+            is_hypoxias_incoming += [{"datetime": v.datetime, "value": v.value} for v in (block.apnea.isHypoxias or [])]
 
         if block.cardiacLoad and block.cardiacLoad.values:
-            cl_values += [{"datetime": v.datetime, "value": v.value} for v in block.cardiacLoad.values]
+            cl_incoming += [{"datetime": v.datetime, "value": v.value} for v in block.cardiacLoad.values]
 
         if block.sportStatus:
             if block.sportStatus.version is not None:
                 sport_status_version = block.sportStatus.version
-            sport_status_values += [{"datetime": v.datetime, "value": v.value} for v in (block.sportStatus.values or [])]
+            sport_status_incoming += [{"datetime": v.datetime, "value": v.value} for v in (block.sportStatus.values or [])]
 
         if block.bloodGlucose and block.bloodGlucose.value is not None:
             blood_glucose = {"value": block.bloodGlucose.value, "datetime": block.bloodGlucose.datetime}
@@ -137,47 +136,64 @@ def upload_health(db: Session, user_id: int, body: UploadHealthRequest) -> None:
                 "lDL": bc.lDL,
             }
 
-    if hr_values:
-        nums = [v["value"] for v in hr_values]
-        record.heart_rate = {"avg": _avg(nums), "min": min(nums), "max": max(nums), "values": hr_values}
+    if hr_incoming:
+        merged = _merge_by_datetime((record.heart_rate or {}).get("values"), hr_incoming)
+        nums = [v["value"] for v in merged]
+        record.heart_rate = {"avg": _avg(nums), "min": min(nums), "max": max(nums), "values": merged}
 
-    if bp_values:
+    if bp_incoming:
+        merged = _merge_by_datetime((record.blood_pressure or {}).get("values"), bp_incoming)
         record.blood_pressure = {
-            "systolicAvg": _avg([v["systolic"] for v in bp_values]),
-            "diastolicAvg": _avg([v["diastolic"] for v in bp_values]),
-            "values": bp_values,
+            "systolicAvg": _avg([v["systolic"] for v in merged]),
+            "diastolicAvg": _avg([v["diastolic"] for v in merged]),
+            "values": merged,
         }
 
-    if bo_values:
-        nums = [v["value"] for v in bo_values]
-        record.blood_oxygen = {"avg": _avg(nums), "min": min(nums), "max": max(nums), "values": bo_values}
+    if bo_incoming:
+        merged = _merge_by_datetime((record.blood_oxygen or {}).get("values"), bo_incoming)
+        nums = [v["value"] for v in merged]
+        record.blood_oxygen = {"avg": _avg(nums), "min": min(nums), "max": max(nums), "values": merged}
 
-    if bt_values:
-        record.body_temperature = {"avg": _avg([v["value"] for v in bt_values]), "values": bt_values}
+    if bt_incoming:
+        merged = _merge_by_datetime((record.body_temperature or {}).get("values"), bt_incoming)
+        record.body_temperature = {"avg": _avg([v["value"] for v in merged]), "values": merged}
 
-    if st_values:
-        record.skin_temperature = {"avg": _avg([v["value"] for v in st_values]), "values": st_values}
+    if st_incoming:
+        merged = _merge_by_datetime((record.skin_temperature or {}).get("values"), st_incoming)
+        record.skin_temperature = {"avg": _avg([v["value"] for v in merged]), "values": merged}
 
     if has_activity:
+        merged = _merge_by_datetime((record.activity or {}).get("values"), activity_incoming)
         record.activity = {
-            "steps": total_steps,
-            "calories": round(total_calories, 2),
-            "distanceKm": round(total_distance, 3),
-            "sportValue": total_sport_value,
-            "values": activity_values,
+            "steps": sum(v.get("steps") or 0 for v in merged),
+            "calories": round(sum(v.get("calories") or 0.0 for v in merged), 2),
+            "distanceKm": round(sum(v.get("distanceKm") or 0.0 for v in merged), 3),
+            "sportValue": sum(v.get("sportValue") or 0 for v in merged),
+            "values": merged,
         }
 
-    if rr_values:
-        record.respiratory_rate = {"avg": _avg([v["value"] for v in rr_values]), "values": rr_values}
+    if rr_incoming:
+        merged = _merge_by_datetime((record.respiratory_rate or {}).get("values"), rr_incoming)
+        record.respiratory_rate = {"avg": _avg([v["value"] for v in merged]), "values": merged}
 
-    if apnea_results or hypoxia_times or is_hypoxias:
-        record.apnea = {"apneaResults": apnea_results, "hypoxiaTimes": hypoxia_times, "isHypoxias": is_hypoxias}
+    if apnea_results_incoming or hypoxia_times_incoming or is_hypoxias_incoming:
+        existing_apnea = record.apnea or {}
+        record.apnea = {
+            "apneaResults": _merge_by_datetime(existing_apnea.get("apneaResults"), apnea_results_incoming),
+            "hypoxiaTimes": _merge_by_datetime(existing_apnea.get("hypoxiaTimes"), hypoxia_times_incoming),
+            "isHypoxias": _merge_by_datetime(existing_apnea.get("isHypoxias"), is_hypoxias_incoming),
+        }
 
-    if cl_values:
-        record.cardiac_load = {"avg": _avg([v["value"] for v in cl_values]), "values": cl_values}
+    if cl_incoming:
+        merged = _merge_by_datetime((record.cardiac_load or {}).get("values"), cl_incoming)
+        record.cardiac_load = {"avg": _avg([v["value"] for v in merged]), "values": merged}
 
-    if sport_status_values or sport_status_version is not None:
-        record.sport_status = {"version": sport_status_version, "values": sport_status_values}
+    if sport_status_incoming or sport_status_version is not None:
+        merged = _merge_by_datetime((record.sport_status or {}).get("values"), sport_status_incoming)
+        record.sport_status = {
+            "version": sport_status_version if sport_status_version is not None else (record.sport_status or {}).get("version"),
+            "values": merged,
+        }
 
     if blood_glucose:
         record.blood_glucose = blood_glucose
