@@ -11,8 +11,8 @@ router = APIRouter(tags=["health"])
 
 @router.post("/health/upload", status_code=201)
 def upload_health_endpoint(body: UploadHealthRequest, db: SessionDep, current_user: CurrentUser):
-    health_service.upload_health(db, current_user.id, body)
-    return {"success": True, "message": "Health data uploaded successfully."}
+    data = health_service.upload_health(db, current_user.id, body)
+    return {"success": True, "message": "Health data uploaded successfully", "data": data}
 
 
 class _SummaryRequestBody(BaseModel):
