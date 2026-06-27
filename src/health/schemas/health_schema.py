@@ -6,108 +6,62 @@ from pydantic import BaseModel
 # ── POST /health/upload ──────────────────────────────────────────────────────
 
 
-class RawSleepDataInput(BaseModel):
-    sleep_date: Optional[str] = None
-    cali_flag: Optional[int] = None
-    sleep_quality: Optional[int] = None
-    wake_count: Optional[int] = None
-    deep_sleep_minutes: Optional[int] = None
-    light_sleep_minutes: Optional[int] = None
-    total_sleep_minutes: Optional[int] = None
-    sleep_start: Optional[str] = None
-    sleep_end: Optional[str] = None
-    sleep_line: Optional[str] = None
-    sleep_line_type: Optional[str] = None
+class SleepRecordInput(BaseModel):
+    date: str
+    sleepQuality: int
+    wakeCount: int
+    deepSleepTime: int
+    lowSleepTime: int
+    allSleepTime: int
+    sleepDown: str
+    sleepUp: str
+    sleepLine: Optional[str] = None
 
 
-class RawActivityValue(BaseModel):
-    device_time: str
-    step_value: Optional[int] = None
-    sport_value: Optional[int] = None
-    calories: Optional[float] = None
-    distance_km: Optional[float] = None
+class BloodComponentData(BaseModel):
+    uricAcid: Optional[float] = None
+    tCHO: Optional[float] = None
+    tAG: Optional[float] = None
+    hDL: Optional[float] = None
+    lDL: Optional[float] = None
 
 
-class RawActivityInput(BaseModel):
-    values: list[RawActivityValue] = []
+class HealthRecordData(BaseModel):
+    heartRate: Optional[float] = None
+    bloodOxygen: Optional[float] = None
+    respiratoryRate: Optional[float] = None
+    sleepState: Optional[int] = None
+    apneaResult: Optional[int] = None
+    hypoxiaTime: Optional[int] = None
+    cardiacLoad: Optional[float] = None
+    isHypoxia: Optional[int] = None
+    correct: Optional[int] = None
+    bloodGlucose: Optional[float] = None
+    sportStatus: Optional[int] = None
+    bloodComponent: Optional[BloodComponentData] = None
 
 
-class HeartRateInput(BaseModel):
-    value: Optional[int] = None
-    ppg_values: Optional[list[int]] = None
-    ecg_values: Optional[list[int]] = None
-    ppg_count: Optional[int] = None
-    ecg_count: Optional[int] = None
+class HealthRecordInput(BaseModel):
+    date: str
+    datetime: str
+    data: HealthRecordData
 
 
-class BloodPressureInput(BaseModel):
-    systolic: Optional[int] = None
-    diastolic: Optional[int] = None
-    pressure: Optional[int] = None
+class ActivityRecordData(BaseModel):
+    sportValue: Optional[float] = None
+    stepValue: Optional[int] = None
+    wear: Optional[int] = None
+    calValue: Optional[float] = None
+    disValue: Optional[float] = None
 
 
-class BloodOxygenInput(BaseModel):
-    values: Optional[list[int]] = None
-    valid_count: Optional[int] = None
-    correct_values: Optional[list[int]] = None
-
-
-class RespiratoryRateInput(BaseModel):
-    values: Optional[list[int]] = None
-    valid_count: Optional[int] = None
-
-
-class BodyTemperatureInput(BaseModel):
-    temperature: Optional[float] = None
-    base_temperature: Optional[float] = None
-
-
-class SleepStateInput(BaseModel):
-    values: Optional[list[int]] = None
-    valid_count: Optional[int] = None
-
-
-class ApneaInput(BaseModel):
-    apnea_results: Optional[list] = None
-    hypoxia_times: Optional[list] = None
-    is_hypoxias: Optional[list] = None
-
-
-class CardiacLoadInput(BaseModel):
-    values: Optional[list] = None
-
-
-class BloodComponentInput(BaseModel):
-    uric_acid: Optional[float] = None
-    total_cholesterol: Optional[float] = None
-    triglyceride: Optional[float] = None
-    hdl: Optional[float] = None
-    ldl: Optional[float] = None
-
-
-class SportStatusInput(BaseModel):
-    version: Optional[int] = None
-    values: Optional[list[int]] = None
-
-
-class RawHealthRecordInput(BaseModel):
-    device_time: str
-    heart_rate: Optional[HeartRateInput] = None
-    blood_pressure: Optional[BloodPressureInput] = None
-    blood_oxygen: Optional[BloodOxygenInput] = None
-    respiratory_rate: Optional[RespiratoryRateInput] = None
-    body_temperature: Optional[BodyTemperatureInput] = None
-    sleep_state: Optional[SleepStateInput] = None
-    apnea: Optional[ApneaInput] = None
-    cardiac_load: Optional[CardiacLoadInput] = None
-    blood_glucose: Optional[float] = None
-    blood_component: Optional[BloodComponentInput] = None
-    sport_status: Optional[SportStatusInput] = None
-    met: Optional[float] = None
+class ActivityRecordInput(BaseModel):
+    date: str
+    datetime: str
+    data: ActivityRecordData
 
 
 class UploadHealthRequest(BaseModel):
-    mac_address: str
-    raw_sleep_data: Optional[RawSleepDataInput] = None
-    raw_activity: Optional[RawActivityInput] = None
-    raw_health_records: list[RawHealthRecordInput] = []
+    sleep_records: list[SleepRecordInput] = []
+    health_records: list[HealthRecordInput] = []
+    activity_records: list[ActivityRecordInput] = []

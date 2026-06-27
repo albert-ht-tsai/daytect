@@ -6,7 +6,6 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from src.about.api import router as about_router
 from src.auth.api import router as auth_router
 from src.core.config import AVATAR_DIR
 from src.core.database import init_db
@@ -39,6 +38,5 @@ v1_router = APIRouter(prefix="/v1")
 v1_router.include_router(auth_router)
 v1_router.include_router(user_router)
 v1_router.include_router(health_router)
-v1_router.include_router(about_router)
 
 app.include_router(v1_router)

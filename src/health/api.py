@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, Query
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from src.core.deps import CurrentUser, SessionDep
@@ -11,8 +11,8 @@ router = APIRouter(tags=["health"])
 
 @router.post("/health/upload", status_code=201)
 def upload_health_endpoint(body: UploadHealthRequest, db: SessionDep, current_user: CurrentUser):
-    data = health_service.upload_health(db, current_user.id, body)
-    return {"success": True, "message": "Health data uploaded successfully", "data": data}
+    health_service.upload_health(db, current_user.id, body)
+    return {"success": True, "message": "upload success"}
 
 
 class _SummaryRequestBody(BaseModel):
@@ -24,9 +24,8 @@ def request_health_summary_endpoint(
     body: _SummaryRequestBody,
     db: SessionDep,
     current_user: CurrentUser,
-    background_tasks: BackgroundTasks,
 ):
-    data = health_summary_service.request_summary(db, current_user.id, body.date, background_tasks)
+    data = health_summary_service.request_summary(db, current_user.id, body.date)
     return {"success": True, "data": data, "message": "AI health summary job created."}
 
 

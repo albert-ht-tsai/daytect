@@ -12,7 +12,7 @@ def _new_job_id() -> str:
 
 
 class AiHealthSummaryJob(Base):
-    __tablename__ = "ai_health_summary_jobs"
+    __tablename__ = "health_summary_jobs"
 
     id = Column(Integer, primary_key=True, index=True)
     job_id = Column(String, unique=True, index=True, nullable=False, default=_new_job_id)
@@ -43,10 +43,10 @@ class AiHealthSummaryJob(Base):
 
 
 class AiHealthSummaryChunk(Base):
-    __tablename__ = "ai_health_summary_chunks"
+    __tablename__ = "health_summary_chunks"
 
     id = Column(Integer, primary_key=True, index=True)
-    job_id = Column(Integer, ForeignKey("ai_health_summary_jobs.id"), nullable=False, index=True)
+    job_id = Column(Integer, ForeignKey("health_summary_jobs.id"), nullable=False, index=True)
     batch_index = Column(Integer, nullable=False)
     start_time = Column(String, nullable=False)
     end_time = Column(String, nullable=False)
