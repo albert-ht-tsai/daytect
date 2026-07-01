@@ -10,6 +10,8 @@ from src.device.models.activity_model import ActivityRecord  # noqa: F401
 from src.device.models.device_model import DeviceRecord  # noqa: F401
 from src.device.models.health_model import HealthRecord  # noqa: F401
 from src.device.models.sleep_model import SleepRecord  # noqa: F401
+from src.summary.api import router as summary_router
+from src.summary.models.summary_model import DailyHealthSummaryRecord  # noqa: F401
 
 load_dotenv()
 
@@ -32,5 +34,6 @@ app.add_middleware(
 
 v1_router = APIRouter(prefix="/v1")
 v1_router.include_router(device_router)
+v1_router.include_router(summary_router)
 
 app.include_router(v1_router)

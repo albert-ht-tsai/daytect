@@ -28,6 +28,7 @@ def init_db() -> None:
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables ensured")
         _run_migrations()
+        Base.metadata.create_all(bind=engine)
     except SQLAlchemyError as e:
         logger.exception("Database initialization failed")
         raise
@@ -38,9 +39,11 @@ def _run_migrations() -> None:
         "ALTER TABLE device_records DROP COLUMN IF EXISTS user_id",
         "ALTER TABLE device_records DROP COLUMN IF EXISTS device_id",
         "ALTER TABLE device_records DROP COLUMN IF EXISTS rssi",
-        "ALTER TABLE device_records DROP COLUMN IF EXISTS battery",
-        "ALTER TABLE device_records DROP COLUMN IF EXISTS is_connected",
-        "ALTER TABLE device_records DROP COLUMN IF EXISTS last_synced_at",
+        "ALTER TABLE device_records ADD COLUMN IF NOT EXISTS battery INTEGER",
+        "ALTER TABLE device_records ADD COLUMN IF NOT EXISTS last_sync VARCHAR(19)",
+        "ALTER TABLE device_records ADD COLUMN IF NOT EXISTS is_connected BOOLEAN NOT NULL DEFAULT FALSE",
+        "DROP TABLE IF EXISTS activity_records CASCADE",
+        "DROP TABLE IF EXISTS health_records CASCADE",
     ]
     with engine.begin() as conn:
         for stmt in stmts:

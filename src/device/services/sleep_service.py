@@ -1,64 +1,38 @@
 from sqlalchemy.orm import Session
 
+from src.device.models.device_model import DeviceRecord
 from src.device.models.sleep_model import SleepRecord
-from src.device.schemas.sleep_schema import SleepUploadRequest, SleepResponse, TimePoint
+from src.device.schemas.sleep_schema import SleepUploadRequest
 
 
-def upload_sleep(db: Session, device_id: int, body: SleepUploadRequest) -> None:
+def upload_sleep(db: Session, body: SleepUploadRequest) -> DeviceRecord | None:
+    device = db.query(DeviceRecord).filter(DeviceRecord.mac_address == body.macAddress).first()
+    if device is None:
+        return None
+
+    record = body.sleepRecord
     existing = db.query(SleepRecord).filter(
-        SleepRecord.device_id == device_id,
-        SleepRecord.date == body.date,
+        SleepRecord.device_id == device.id,
+        SleepRecord.date == record.date,
     ).first()
 
     fields = {
-        "sleep_quality": body.sleepQuality,
-        "wake_count": body.wakeCount,
-        "deep_sleep_time": body.deepSleepTime,
-        "low_sleep_time": body.lowSleepTime,
-        "all_sleep_time": body.allSleepTime,
-        "sleep_line": body.sleepLine,
-        "sleep_down_hour": body.sleepDown.hour if body.sleepDown else None,
-        "sleep_down_minute": body.sleepDown.minute if body.sleepDown else None,
-        "sleep_up_hour": body.sleepUp.hour if body.sleepUp else None,
-        "sleep_up_minute": body.sleepUp.minute if body.sleepUp else None,
+        "sleep_quality": record.sleepQuality,
+        "wake_count": record.wakeCount,
+        "deep_sleep_time": record.deepSleepTime,
+        "low_sleep_time": record.lowSleepTime,
+        "all_sleep_time": record.allSleepTime,
+        "sleep_line": record.sleepLine,
+        "sleep_down_hour": record.sleepDown.hour if record.sleepDown else None,
+        "sleep_down_minute": record.sleepDown.minute if record.sleepDown else None,
+        "sleep_up_hour": record.sleepUp.hour if record.sleepUp else None,
+        "sleep_up_minute": record.sleepUp.minute if record.sleepUp else None,
     }
 
     if existing is None:
-        db.add(SleepRecord(device_id=device_id, date=body.date, **fields))
+        db.add(SleepRecord(device_id=device.id, date=record.date, **fields))
     else:
         for attr, val in fields.items():
-            if val is not None:
-                setattr(existing, attr, val)
+            setattr(existing, attr, val)
     db.commit()
-
-
-def get_sleep(db: Session, device_id: int, date: str) -> SleepResponse | None:
-    record = db.query(SleepRecord).filter(
-        SleepRecord.device_id == device_id,
-        SleepRecord.date == date,
-    ).first()
-    if record is None:
-        return None
-
-    sleep_down = (
-        TimePoint(hour=record.sleep_down_hour, minute=record.sleep_down_minute)
-        if record.sleep_down_hour is not None
-        else None
-    )
-    sleep_up = (
-        TimePoint(hour=record.sleep_up_hour, minute=record.sleep_up_minute)
-        if record.sleep_up_hour is not None
-        else None
-    )
-
-    return SleepResponse(
-        date=record.date,
-        sleepQuality=record.sleep_quality,
-        wakeCount=record.wake_count,
-        deepSleepTime=record.deep_sleep_time,
-        lowSleepTime=record.low_sleep_time,
-        allSleepTime=record.all_sleep_time,
-        sleepLine=record.sleep_line,
-        sleepDown=sleep_down,
-        sleepUp=sleep_up,
-    )
+    return device

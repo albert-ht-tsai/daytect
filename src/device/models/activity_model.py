@@ -8,11 +8,11 @@ from src.core.database import Base
 
 class ActivityRecord(Base):
     __tablename__ = "activity_records"
-    __table_args__ = (UniqueConstraint("device_id", "date"),)
+    __table_args__ = (UniqueConstraint("device_id", "datetime"),)
 
     id = Column(Integer, primary_key=True, index=True)
     device_id = Column(Integer, nullable=False, index=True)
-    date = Column(String(10), nullable=False)
+    entry_datetime = Column("datetime", String(19), nullable=False)
     data = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(
