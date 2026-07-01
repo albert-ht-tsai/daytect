@@ -9,7 +9,7 @@ router = APIRouter(tags=["summary"])
 
 @router.post("/summary", response_model=DailyHealthSummaryResponse)
 def create_summary_endpoint(body: SummaryRequest, db: SessionDep):
-    result = summary_service.generate_summary(db, body.macAddress, body.date)
+    result = summary_service.generate_summary(db, body.macAddress, body.date, body.language)
     if result is None:
         raise HTTPException(status_code=404, detail={"code": 404, "message": "Device not found"})
     return result

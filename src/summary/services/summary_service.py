@@ -19,6 +19,11 @@ from src.summary.services import scoring
 
 _CATEGORY_WEIGHT = 1 / 3
 
+_LANGUAGE_INSTRUCTIONS = {
+    "en": "Respond in English.",
+    "zh": "請使用繁體中文回覆。",
+}
+
 _SLEEP_SYSTEM_PROMPT = """You are a health data analysis assistant.
 Analyze one day of wearable sleep data and return a JSON object:
 {"summary": "<string>", "suggestion": "<string>"}
@@ -145,9 +150,11 @@ def _score_health(agg: dict) -> float | None:
     return scoring.weighted_average(components)
 
 
-def _generate_category_text(system_prompt: str, payload: dict) -> tuple[str, str]:
+def _generate_category_text(system_prompt: str, payload: dict, language: str) -> tuple[str, str]:
+    language_instruction = _LANGUAGE_INSTRUCTIONS.get(language, _LANGUAGE_INSTRUCTIONS["en"])
+    prompt = f"{system_prompt}\n- {language_instruction}"
     try:
-        result, _usage = ai_client.generate_json(system_prompt, f"Input:\n{json.dumps(payload, default=str)}")
+        result, _usage = ai_client.generate_json(prompt, f"Input:\n{json.dumps(payload, default=str)}")
         return result.get("summary", ""), result.get("suggestion", "")
     except Exception as e:  # noqa: BLE001
         logger.exception("AI summary generation failed")
@@ -179,7 +186,9 @@ def _to_response(device: DeviceRecord, record: DailyHealthSummaryRecord) -> Dail
     )
 
 
-def generate_summary(db: Session, mac_address: str, date: str) -> DailyHealthSummaryResponse | None:
+def generate_summary(
+    db: Session, mac_address: str, date: str, language: str = "en"
+) -> DailyHealthSummaryResponse | None:
     device = db.query(DeviceRecord).filter(DeviceRecord.mac_address == mac_address).first()
     if device is None:
         return None
@@ -215,19 +224,19 @@ def generate_summary(db: Session, mac_address: str, date: str) -> DailyHealthSum
 
     existing.sleep_score = sleep_score
     existing.sleep_summary, existing.sleep_suggestion = _generate_category_text(
-        _SLEEP_SYSTEM_PROMPT, {"date": date, "score": sleep_score, "data": sleep_agg}
+        _SLEEP_SYSTEM_PROMPT, {"date": date, "score": sleep_score, "data": sleep_agg}, language
     )
     db.commit()
 
     existing.activity_score = activity_score
     existing.activity_summary, existing.activity_suggestion = _generate_category_text(
-        _ACTIVITY_SYSTEM_PROMPT, {"date": date, "score": activity_score, "data": activity_agg}
+        _ACTIVITY_SYSTEM_PROMPT, {"date": date, "score": activity_score, "data": activity_agg}, language
     )
     db.commit()
 
     existing.health_score = health_score
     existing.health_summary, existing.health_suggestion = _generate_category_text(
-        _HEALTH_SYSTEM_PROMPT, {"date": date, "score": health_score, "data": health_agg}
+        _HEALTH_SYSTEM_PROMPT, {"date": date, "score": health_score, "data": health_agg}, language
     )
     db.commit()
 
@@ -246,6 +255,7 @@ def generate_summary(db: Session, mac_address: str, date: str) -> DailyHealthSum
             "activity": {"score": activity_score, "summary": existing.activity_summary},
             "health": {"score": health_score, "summary": existing.health_summary},
         },
+        language,
     )
     db.commit()
     db.refresh(existing)

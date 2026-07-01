@@ -1,9 +1,12 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
 class SummaryRequest(BaseModel):
     macAddress: str
     date: str
+    language: Literal["en", "zh"] = "en"
 
 
 class CategoryResult(BaseModel):
