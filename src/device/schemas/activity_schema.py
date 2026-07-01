@@ -1,8 +1,7 @@
 from pydantic import BaseModel
 
 
-class ActivityRecordPayload(BaseModel):
-    datetime: str
+class ActivityAvgRecordPayload(BaseModel):
     sportValue: int | None = None
     sportStatus: int | None = None
     stepValue: int | None = None
@@ -13,4 +12,5 @@ class ActivityRecordPayload(BaseModel):
 class ActivityUploadRequest(BaseModel):
     id: int | None = None
     macAddress: str
-    activityRecord: ActivityRecordPayload
+    date: str
+    activityAvgRecord: ActivityAvgRecordPayload

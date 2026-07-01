@@ -70,47 +70,34 @@ def _aggregate_sleep(record: SleepRecord | None) -> dict:
     }
 
 
-def _avg(values: list[float]) -> float | None:
-    return round(sum(values) / len(values), 2) if values else None
-
-
-def _aggregate_activity(rows: list[ActivityRecord]) -> dict:
-    if not rows:
+def _aggregate_activity(record: ActivityRecord | None) -> dict:
+    if record is None:
         return {}
-    steps = [r.data.get("stepValue") for r in rows if r.data.get("stepValue") is not None]
-    cals = [r.data.get("calValue") for r in rows if r.data.get("calValue") is not None]
-    dists = [r.data.get("disValue") for r in rows if r.data.get("disValue") is not None]
+    data = record.data or {}
     return {
-        "entryCount": len(rows),
-        "totalSteps": sum(steps) if steps else None,
-        "totalCalories": round(sum(cals), 2) if cals else None,
-        "totalDistanceKm": round(sum(dists), 2) if dists else None,
+        "stepValue": data.get("stepValue"),
+        "calValue": data.get("calValue"),
+        "disValue": data.get("disValue"),
     }
 
 
-def _aggregate_health(rows: list[HealthRecord]) -> dict:
-    if not rows:
+def _aggregate_health(record: HealthRecord | None) -> dict:
+    if record is None:
         return {}
+    data = record.data or {}
 
-    def _field(key: str, sub_key: str) -> list[float]:
-        values = []
-        for r in rows:
-            sub = r.data.get(key)
-            if sub and sub.get(sub_key) is not None:
-                values.append(sub[sub_key])
-        return values
-
-    stress = _field("stress", "pressure")
+    def _field(key: str, sub_key: str) -> float | None:
+        sub = data.get(key)
+        return sub.get(sub_key) if sub else None
 
     return {
-        "entryCount": len(rows),
-        "avgHeartRate": _avg(_field("heartRate", "ppgs")),
-        "avgSystolic": _avg(_field("bloodPressure", "systolic")),
-        "avgDiastolic": _avg(_field("bloodPressure", "diastolic")),
-        "avgBloodOxygen": _avg(_field("bloodOxygen", "oxygens")),
-        "avgBodyTemperature": _avg(_field("bodyTemperature", "temperature")),
-        "avgRespiratoryRate": _avg(_field("respiratory", "resRates")),
-        "avgStress": _avg(stress),
+        "avgHeartRate": _field("heartRate", "ppgs"),
+        "avgSystolic": _field("bloodPressure", "systolic"),
+        "avgDiastolic": _field("bloodPressure", "diastolic"),
+        "avgBloodOxygen": _field("bloodOxygen", "oxygens"),
+        "avgBodyTemperature": _field("bodyTemperature", "temperature"),
+        "avgRespiratoryRate": _field("respiratory", "resRates"),
+        "avgStress": _field("stress", "pressure"),
     }
 
 
@@ -133,9 +120,9 @@ def _score_sleep(agg: dict) -> float | None:
 
 def _score_activity(agg: dict) -> float | None:
     components = [
-        (scoring.higher_is_better_score(agg.get("totalSteps"), 8000), 0.5),
-        (scoring.higher_is_better_score(agg.get("totalCalories"), 300), 0.3),
-        (scoring.higher_is_better_score(agg.get("totalDistanceKm"), 5), 0.2),
+        (scoring.higher_is_better_score(agg.get("stepValue"), 8000), 0.5),
+        (scoring.higher_is_better_score(agg.get("calValue"), 300), 0.3),
+        (scoring.higher_is_better_score(agg.get("disValue"), 5), 0.2),
     ]
     return scoring.weighted_average(components)
 
@@ -201,18 +188,18 @@ def generate_summary(db: Session, mac_address: str, date: str) -> DailyHealthSum
         SleepRecord.device_id == device.id,
         SleepRecord.date == date,
     ).first()
-    activity_rows = db.query(ActivityRecord).filter(
+    activity_row = db.query(ActivityRecord).filter(
         ActivityRecord.device_id == device.id,
-        ActivityRecord.entry_datetime.like(f"{date}%"),
-    ).all()
-    health_rows = db.query(HealthRecord).filter(
+        ActivityRecord.date == date,
+    ).first()
+    health_row = db.query(HealthRecord).filter(
         HealthRecord.device_id == device.id,
-        HealthRecord.entry_datetime.like(f"{date}%"),
-    ).all()
+        HealthRecord.date == date,
+    ).first()
 
     sleep_agg = _aggregate_sleep(sleep_row)
-    activity_agg = _aggregate_activity(activity_rows)
-    health_agg = _aggregate_health(health_rows)
+    activity_agg = _aggregate_activity(activity_row)
+    health_agg = _aggregate_health(health_row)
 
     sleep_score = _score_sleep(sleep_agg)
     activity_score = _score_activity(activity_agg)

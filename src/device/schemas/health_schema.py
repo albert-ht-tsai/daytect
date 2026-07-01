@@ -53,8 +53,7 @@ class BloodComponents(BaseModel):
     lDL: float | None = None
 
 
-class HealthRecordPayload(BaseModel):
-    datetime: str
+class HealthAvgRecordPayload(BaseModel):
     heartRate: HeartRate | None = None
     bloodPressure: BloodPressure | None = None
     bloodOxygen: BloodOxygen | None = None
@@ -75,4 +74,5 @@ class HealthRecordPayload(BaseModel):
 class HealthUploadRequest(BaseModel):
     id: int | None = None
     macAddress: str
-    healthRecord: HealthRecordPayload
+    date: str
+    healthAvgRecord: HealthAvgRecordPayload

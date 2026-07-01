@@ -10,16 +10,15 @@ def upload_health(db: Session, body: HealthUploadRequest) -> DeviceRecord | None
     if device is None:
         return None
 
-    record = body.healthRecord
     existing = db.query(HealthRecord).filter(
         HealthRecord.device_id == device.id,
-        HealthRecord.entry_datetime == record.datetime,
+        HealthRecord.date == body.date,
     ).first()
 
-    data = record.model_dump()
+    data = body.healthAvgRecord.model_dump()
 
     if existing is None:
-        db.add(HealthRecord(device_id=device.id, entry_datetime=record.datetime, data=data))
+        db.add(HealthRecord(device_id=device.id, date=body.date, data=data))
     else:
         existing.data = data
     db.commit()

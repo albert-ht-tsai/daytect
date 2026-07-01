@@ -10,16 +10,15 @@ def upload_activity(db: Session, body: ActivityUploadRequest) -> DeviceRecord | 
     if device is None:
         return None
 
-    record = body.activityRecord
     existing = db.query(ActivityRecord).filter(
         ActivityRecord.device_id == device.id,
-        ActivityRecord.entry_datetime == record.datetime,
+        ActivityRecord.date == body.date,
     ).first()
 
-    data = record.model_dump()
+    data = body.activityAvgRecord.model_dump()
 
     if existing is None:
-        db.add(ActivityRecord(device_id=device.id, entry_datetime=record.datetime, data=data))
+        db.add(ActivityRecord(device_id=device.id, date=body.date, data=data))
     else:
         existing.data = data
     db.commit()
