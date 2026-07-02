@@ -26,21 +26,21 @@ def _error_response(error: AnalysisError) -> JSONResponse:
 @router.post("/request", response_model=AnalysisResponse)
 def request_endpoint(body: AnalysisRequest, db: SessionDep):
     try:
-        answer = analysis_service.handle_request(db, body.macAddress, body.message, body.language)
+        answer, session_id = analysis_service.handle_request(db, body.macAddress, body.message, body.language)
     except AnalysisError as e:
         return _error_response(e)
-    return {"success": True, "message": answer}
+    return {"success": True, "message": answer, "session_id": session_id}
 
 
 @router.post("/keep-request", response_model=AnalysisResponse)
 def keep_request_endpoint(body: KeepRequest, db: SessionDep):
     try:
-        answer = analysis_service.handle_keep_request(
-            db, body.macAddress, body.previousAnswer, body.message, body.language
+        answer, session_id = analysis_service.handle_keep_request(
+            db, body.macAddress, body.session_id, body.message, body.language
         )
     except AnalysisError as e:
         return _error_response(e)
-    return {"success": True, "message": answer}
+    return {"success": True, "message": answer, "session_id": session_id}
 
 
 @router.post("/pic-identify", response_model=PicIdentifyResponse)
@@ -55,6 +55,7 @@ async def pic_identify_endpoint(
     image: list[UploadFile] = File(default_factory=list),
     message: str | None = Form(None),
     language: str = Form("en"),
+    session_id: str | None = Form(None),
 ):
     if len(image) > 1:
         return _error_response(AnalysisError(400, "一次最多上傳 1 張圖片"))
@@ -64,7 +65,9 @@ async def pic_identify_endpoint(
     content_type = picked.content_type if picked is not None else None
 
     try:
-        pic_id = analysis_service.handle_pic_identify(db, macAddress, image_bytes, content_type, message, language)
+        pic_id = analysis_service.handle_pic_identify(
+            db, macAddress, image_bytes, content_type, message, language, session_id
+        )
     except AnalysisError as e:
         return _error_response(e)
     return {"success": True, "message": "圖片辨識成功", "data": {"pic_id": pic_id}}
@@ -73,7 +76,7 @@ async def pic_identify_endpoint(
 @router.get("/pic-answer", response_model=AnalysisResponse)
 def pic_answer_endpoint(macAddress: str, pic_id: str, db: SessionDep, language: Literal["en", "zh"] = "en"):
     try:
-        answer = analysis_service.handle_pic_answer(db, macAddress, pic_id, language)
+        answer, session_id = analysis_service.handle_pic_answer(db, macAddress, pic_id, language)
     except AnalysisError as e:
         return _error_response(e)
-    return {"success": True, "message": answer}
+    return {"success": True, "message": answer, "session_id": session_id}

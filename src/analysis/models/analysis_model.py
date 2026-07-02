@@ -11,6 +11,7 @@ class AnalysisRecord(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     mac_address = Column(String(50), nullable=False, index=True)
+    session_id = Column(String(64), nullable=True, index=True)
     record_datetime = Column(DateTime, nullable=False)
     user_question = Column(Text, nullable=True)
     system_answer = Column(Text, nullable=True)

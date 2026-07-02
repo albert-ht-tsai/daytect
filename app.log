@@ -110,3 +110,115 @@ sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) connection to serve
 Either provide the file, use the system's trusted roots with sslrootcert=system, or change sslmode to disable server certificate verification.
 
 (Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-07-02 14:58:30,825 - app_logger - ERROR - Database initialization failed
+Traceback (most recent call last):
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3317, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 448, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1272, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 712, in checkout
+    rec = pool._do_get()
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 121, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 175, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 389, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 674, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 900, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 121, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 896, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\engine\create.py", line 667, in connect
+    return dialect.connect(*cargs_tup, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 630, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+psycopg2.OperationalError: connection to server at "my-postgres.cqnk6ssq24oc.us-east-1.rds.amazonaws.com" (34.232.189.41), port 5432 failed: root certificate file "/certs/global-bundle.pem" does not exist
+Either provide the file, use the system's trusted roots with sslrootcert=system, or change sslmode to disable server certificate verification.
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Tim\Desktop\worksapce\daytect\src\core\database.py", line 25, in init_db
+    with engine.connect() as conn:
+         ~~~~~~~~~~~~~~^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3293, in connect
+    return self._connection_cls(self)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 145, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        err, dialect, engine
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2448, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3317, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 448, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1272, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 712, in checkout
+    rec = pool._do_get()
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 121, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 175, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 389, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 674, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 900, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 121, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 896, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\engine\create.py", line 667, in connect
+    return dialect.connect(*cargs_tup, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 630, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tim\Desktop\worksapce\daytect\venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) connection to server at "my-postgres.cqnk6ssq24oc.us-east-1.rds.amazonaws.com" (34.232.189.41), port 5432 failed: root certificate file "/certs/global-bundle.pem" does not exist
+Either provide the file, use the system's trusted roots with sslrootcert=system, or change sslmode to disable server certificate verification.
+
+(Background on this error at: https://sqlalche.me/e/20/e3q8)

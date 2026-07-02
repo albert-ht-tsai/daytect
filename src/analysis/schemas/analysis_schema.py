@@ -11,7 +11,7 @@ class AnalysisRequest(BaseModel):
 
 class KeepRequest(BaseModel):
     macAddress: str
-    previousAnswer: str
+    session_id: str
     message: str
     language: Literal["en", "zh"] = "en"
 
@@ -19,6 +19,7 @@ class KeepRequest(BaseModel):
 class AnalysisResponse(BaseModel):
     success: bool
     message: str
+    session_id: str
 
 
 class PicIdentifyData(BaseModel):

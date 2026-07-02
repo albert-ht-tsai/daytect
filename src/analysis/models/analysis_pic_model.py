@@ -11,6 +11,7 @@ class AnalysisPicRecord(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     mac_address = Column(String(50), nullable=False, index=True)
+    session_id = Column(String(64), nullable=True, index=True)
     pic_id = Column(String(64), nullable=False, index=True)
     pic_message = Column(Text, nullable=True)
     image_path = Column(String(512), nullable=True)

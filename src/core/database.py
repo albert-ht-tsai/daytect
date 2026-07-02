@@ -56,6 +56,8 @@ def _run_migrations() -> None:
         "ALTER TABLE sleep_records DROP COLUMN IF EXISTS sleep_up_minute",
         "ALTER TABLE sleep_records ADD COLUMN IF NOT EXISTS sleep_records JSON",
         "ALTER TABLE sleep_records ADD COLUMN IF NOT EXISTS sleep_summary JSON",
+        "ALTER TABLE analysis_records ADD COLUMN IF NOT EXISTS session_id VARCHAR(64)",
+        "ALTER TABLE analysis_pic_records ADD COLUMN IF NOT EXISTS session_id VARCHAR(64)",
     ]
     with engine.begin() as conn:
         for stmt in stmts:
