@@ -66,12 +66,16 @@ Rules:
 def _aggregate_sleep(record: SleepRecord | None) -> dict:
     if record is None:
         return {}
+    summary = record.sleep_summary or {}
     return {
-        "sleepQuality": record.sleep_quality,
-        "wakeCount": record.wake_count,
-        "deepSleepTime": record.deep_sleep_time,
-        "lowSleepTime": record.low_sleep_time,
-        "allSleepTime": record.all_sleep_time,
+        "sleepQuality": summary.get("sleepQuality"),
+        "wakeCount": summary.get("wakeCount"),
+        "deepSleepTime": summary.get("deepSleepTime"),
+        "lowSleepTime": summary.get("lowSleepTime"),
+        "allSleepTime": summary.get("allSleepTime"),
+        "segmentCount": summary.get("segmentCount"),
+        "sleepDown": summary.get("sleepDown"),
+        "sleepUp": summary.get("sleepUp"),
     }
 
 
@@ -106,21 +110,35 @@ def _aggregate_health(record: HealthRecord | None) -> dict:
     }
 
 
-def _score_sleep(agg: dict) -> float | None:
-    all_sleep = agg.get("allSleepTime")
-    deep_sleep = agg.get("deepSleepTime")
+def _score_sleep_segment(segment: dict) -> float | None:
+    all_sleep = segment.get("allSleepTime")
+    deep_sleep = segment.get("deepSleepTime")
     deep_ratio_pct = None
     if all_sleep and deep_sleep is not None and all_sleep > 0:
         deep_ratio_pct = deep_sleep / all_sleep * 100
 
-    quality = agg.get("sleepQuality")
+    quality = segment.get("sleepQuality")
     components = [
         (float(quality) if quality is not None else None, 0.4),
         (scoring.range_score(all_sleep, 420, 540, 180), 0.3),
         (scoring.range_score(deep_ratio_pct, 15, 25, 15), 0.2),
-        (scoring.lower_is_better_score(agg.get("wakeCount"), 2, 6), 0.1),
+        (scoring.lower_is_better_score(segment.get("wakeCount"), 2, 6), 0.1),
     ]
     return scoring.weighted_average(components)
+
+
+def _score_sleep(segments: list[dict]) -> float | None:
+    """Each sleep segment is scored independently, then combined into a single
+    daily score weighted by each segment's allSleepTime (falling back to a
+    plain average when duration weighting isn't available)."""
+    scored = [(_score_sleep_segment(segment), segment.get("allSleepTime")) for segment in segments]
+    scored = [(score, weight) for score, weight in scored if score is not None]
+    if not scored:
+        return None
+    if all(weight for _, weight in scored):
+        total_weight = sum(weight for _, weight in scored)
+        return round(sum(score * weight for score, weight in scored) / total_weight, 1)
+    return round(sum(score for score, _ in scored) / len(scored), 1)
 
 
 def _score_activity(agg: dict) -> float | None:
@@ -210,7 +228,8 @@ def generate_summary(
     activity_agg = _aggregate_activity(activity_row)
     health_agg = _aggregate_health(health_row)
 
-    sleep_score = _score_sleep(sleep_agg)
+    sleep_segments = (sleep_row.sleep_records or []) if sleep_row else []
+    sleep_score = _score_sleep(sleep_segments)
     activity_score = _score_activity(activity_agg)
     health_score = _score_health(health_agg)
 

@@ -44,6 +44,18 @@ def _run_migrations() -> None:
         "ALTER TABLE device_records ADD COLUMN IF NOT EXISTS is_connected BOOLEAN NOT NULL DEFAULT FALSE",
         "DROP TABLE IF EXISTS activity_records CASCADE",
         "DROP TABLE IF EXISTS health_records CASCADE",
+        "ALTER TABLE sleep_records DROP COLUMN IF EXISTS sleep_quality",
+        "ALTER TABLE sleep_records DROP COLUMN IF EXISTS wake_count",
+        "ALTER TABLE sleep_records DROP COLUMN IF EXISTS deep_sleep_time",
+        "ALTER TABLE sleep_records DROP COLUMN IF EXISTS low_sleep_time",
+        "ALTER TABLE sleep_records DROP COLUMN IF EXISTS all_sleep_time",
+        "ALTER TABLE sleep_records DROP COLUMN IF EXISTS sleep_line",
+        "ALTER TABLE sleep_records DROP COLUMN IF EXISTS sleep_down_hour",
+        "ALTER TABLE sleep_records DROP COLUMN IF EXISTS sleep_down_minute",
+        "ALTER TABLE sleep_records DROP COLUMN IF EXISTS sleep_up_hour",
+        "ALTER TABLE sleep_records DROP COLUMN IF EXISTS sleep_up_minute",
+        "ALTER TABLE sleep_records ADD COLUMN IF NOT EXISTS sleep_records JSON",
+        "ALTER TABLE sleep_records ADD COLUMN IF NOT EXISTS sleep_summary JSON",
     ]
     with engine.begin() as conn:
         for stmt in stmts:

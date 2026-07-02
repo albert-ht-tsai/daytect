@@ -4,7 +4,7 @@ from src.core.deps import SessionDep
 from src.device.schemas.activity_schema import ActivityUploadRequest
 from src.device.schemas.device_schema import DeviceCreateRequest
 from src.device.schemas.health_schema import HealthUploadRequest
-from src.device.schemas.sleep_schema import SleepUploadRequest
+from src.device.schemas.sleep_schema import SleepDataResponse, SleepUploadRequest
 from src.device.services import activity_service, device_service, health_service, sleep_service
 
 router = APIRouter(tags=["device"])
@@ -30,6 +30,14 @@ def upload_sleep_endpoint(body: SleepUploadRequest, db: SessionDep):
     if device is None:
         raise HTTPException(status_code=404, detail={"code": 404, "message": "Device not found"})
     return {"success": True, "message": "Sleep data saved successfully"}
+
+
+@router.get("/device/sleep/{macAddress}", response_model=SleepDataResponse)
+def get_sleep_endpoint(macAddress: str, date: str, db: SessionDep):
+    result = sleep_service.get_sleep(db, macAddress, date)
+    if result is None:
+        raise HTTPException(status_code=404, detail={"code": 404, "message": "Sleep data not found"})
+    return result
 
 
 @router.post("/device/activity")
