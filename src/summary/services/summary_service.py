@@ -19,11 +19,6 @@ from src.summary.services import scoring
 
 _CATEGORY_WEIGHT = 1 / 3
 
-_LANGUAGE_INSTRUCTIONS = {
-    "en": "Respond in English.",
-    "zh": "請使用繁體中文回覆。",
-}
-
 _SLEEP_SYSTEM_PROMPT = """You are a health data analysis assistant.
 Analyze one day of wearable sleep data and return a JSON object:
 {"summary": "<string>", "suggestion": "<string>"}
@@ -169,8 +164,7 @@ def _score_health(agg: dict) -> float | None:
 
 
 def _generate_category_text(system_prompt: str, payload: dict, language: str) -> tuple[str, str]:
-    language_instruction = _LANGUAGE_INSTRUCTIONS.get(language, _LANGUAGE_INSTRUCTIONS["en"])
-    prompt = f"{system_prompt}\n- {language_instruction}"
+    prompt = ai_client.with_language(system_prompt, language)
     try:
         result, _usage = ai_client.generate_json(prompt, f"Input:\n{json.dumps(payload, default=str)}")
         return result.get("summary", ""), result.get("suggestion", "")
