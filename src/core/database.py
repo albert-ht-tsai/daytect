@@ -67,6 +67,9 @@ def _run_migrations() -> None:
         "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS activity_steps FLOAT",
         "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS activity_steps_label VARCHAR(10)",
         "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS activity_steps_threshold VARCHAR(50)",
+        "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS sleep_summary TEXT",
+        "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS activity_summary TEXT",
+        "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS health_summary TEXT",
     ]
     with engine.begin() as conn:
         for stmt in stmts:

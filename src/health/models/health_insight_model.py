@@ -59,7 +59,9 @@ class HealthInsightRecord(Base):
     activity_steps_label = Column(String(10), nullable=True)
     activity_steps_threshold = Column(String(50), nullable=True)
 
-    summary = Column(Text, nullable=True)
+    sleep_summary = Column(Text, nullable=True)
+    activity_summary = Column(Text, nullable=True)
+    health_summary = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(

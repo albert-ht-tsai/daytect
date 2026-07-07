@@ -59,7 +59,9 @@ Return a JSON object with exactly these keys:
   "activity_steps": <number>,
   "activity_steps_label": <string>,
   "activity_steps_threshold": "<low>|<mid>|<high>",
-  "summary": <string>
+  "sleep_summary": <string>,
+  "activity_summary": <string>,
+  "health_summary": <string>
 }
 
 Rules:
@@ -67,7 +69,10 @@ Rules:
   regardless of the response language instructed below; they must always stay in Traditional Chinese).
 - Each "*_threshold" field must be a personalized baseline expressed as three values separated by "|",
   derived from the user's profile, not a generic clinical constant.
-- Only the "summary" field should follow the language instruction below.
+- "sleep_summary" covers only sleep_quality/sleep_duration; "activity_summary" covers only activity_steps;
+  "health_summary" covers only the vital-sign metrics (heart rate, blood pressure, blood oxygen, body
+  temperature, HRV, respiratory rate, stress, health_score). Do not mix categories across these three summaries.
+- Only the three "*_summary" fields should follow the language instruction below.
 - Do not diagnose disease or recommend medication or medical treatment.
 - Base the analysis only on the provided data; if data for a metric is missing, still return your best
   estimate of the label using the available profile and data, never omit a key.
@@ -149,6 +154,61 @@ def _generate_baseline(payload: dict, language: str) -> dict:
         raise HealthError(502, f"Unable to generate health insight: {e}") from e
 
 
+_FALLBACK_LABEL = "資料不足"
+_FALLBACK_THRESHOLD = "-"
+_FALLBACK_SUMMARY = {"en": "Not enough data to generate a summary.", "zh": "資料不足，無法產生摘要。"}
+
+# metric -> raw weekly-average key used to backfill a value the AI left out
+_METRIC_RAW_KEYS = {
+    "heart_rate": "heartRate",
+    "blood_oxygen": "bloodOxygen",
+    "body_temperature": "bodyTemperature",
+    "hrv": "hrv",
+    "res_rate": "respiratoryRate",
+    "pressure": "stress",
+    "sleep_quality": "sleepQuality",
+    "sleep_duration": "sleepDuration",
+    "activity_steps": "activitySteps",
+}
+
+
+def _fill_missing_metrics(result: dict, raw: dict, language: str) -> dict:
+    """Defensive fallback: the prompt asks the AI to never omit a key, but if it does anyway,
+    backfill the value from the raw weekly average and a neutral label/threshold instead of
+    silently returning nulls to the client."""
+    filled = dict(result)
+
+    for metric, raw_key in _METRIC_RAW_KEYS.items():
+        if filled.get(metric) is None:
+            filled[metric] = raw.get(raw_key)
+        if not filled.get(f"{metric}_label"):
+            filled[f"{metric}_label"] = _FALLBACK_LABEL
+        if not filled.get(f"{metric}_threshold"):
+            filled[f"{metric}_threshold"] = _FALLBACK_THRESHOLD
+
+    if not filled.get("blood_pressure"):
+        systolic, diastolic = raw.get("systolic"), raw.get("diastolic")
+        filled["blood_pressure"] = f"{systolic}/{diastolic}" if systolic is not None and diastolic is not None else None
+    if not filled.get("blood_pressure_label"):
+        filled["blood_pressure_label"] = _FALLBACK_LABEL
+    if not filled.get("blood_pressure_threshold"):
+        filled["blood_pressure_threshold"] = _FALLBACK_THRESHOLD
+
+    # health_score is a synthesized score with no single raw source to backfill from;
+    # only its label/threshold get a neutral fallback if the AI omitted them.
+    if not filled.get("health_score_label"):
+        filled["health_score_label"] = _FALLBACK_LABEL
+    if not filled.get("health_score_threshold"):
+        filled["health_score_threshold"] = _FALLBACK_THRESHOLD
+
+    fallback_summary = _FALLBACK_SUMMARY.get(language, _FALLBACK_SUMMARY["en"])
+    for key in ("sleep_summary", "activity_summary", "health_summary"):
+        if not filled.get(key):
+            filled[key] = fallback_summary
+
+    return filled
+
+
 def _next_session(db: Session, device_id: int) -> int:
     last = (
         db.query(HealthInsightRecord)
@@ -200,7 +260,9 @@ def _to_response(mac_address: str, record: HealthInsightRecord) -> BaseHealthIns
             activity_steps_label=record.activity_steps_label,
             activity_steps_threshold=record.activity_steps_threshold,
         ),
-        summary=record.summary,
+        sleep_summary=record.sleep_summary or "",
+        activity_summary=record.activity_summary or "",
+        health_summary=record.health_summary or "",
     )
 
 
@@ -232,6 +294,7 @@ def generate_base_health_insight(
         "weeklyAverageData": {**week_agg, **sleep_activity_agg},
     }
     result = _generate_baseline(payload, language)
+    result = _fill_missing_metrics(result, {**week_agg, **sleep_activity_agg}, language)
 
     session = _next_session(db, device.id)
     record = HealthInsightRecord(
@@ -272,7 +335,9 @@ def generate_base_health_insight(
         activity_steps=result.get("activity_steps"),
         activity_steps_label=result.get("activity_steps_label"),
         activity_steps_threshold=result.get("activity_steps_threshold"),
-        summary=result.get("summary", ""),
+        sleep_summary=result.get("sleep_summary", ""),
+        activity_summary=result.get("activity_summary", ""),
+        health_summary=result.get("health_summary", ""),
     )
     db.add(record)
     db.commit()

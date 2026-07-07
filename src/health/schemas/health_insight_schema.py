@@ -53,4 +53,6 @@ class BaseHealthInsightResponse(BaseModel):
     start_date: str
     end_date: str
     metrics: HealthInsightMetrics
-    summary: str
+    sleep_summary: str
+    activity_summary: str
+    health_summary: str
