@@ -222,3 +222,4 @@ sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) connection to serve
 Either provide the file, use the system's trusted roots with sslrootcert=system, or change sslmode to disable server certificate verification.
 
 (Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-07-07 14:26:07,514 - app_logger - WARNING - Truncating oversized user prompt from 50000 to ~7986 chars to respect OPENAI_MAX_INPUT_TOKENS

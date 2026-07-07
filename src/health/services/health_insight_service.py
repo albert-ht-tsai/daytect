@@ -1,0 +1,231 @@
+import json
+from datetime import date, datetime, timedelta, timezone
+
+from sqlalchemy.orm import Session
+
+from src.core import ai_client
+from src.core.logging import logger
+from src.device.models.device_model import DeviceRecord
+from src.device.models.health_model import HealthRecord
+from src.health.models.health_insight_model import HealthInsightRecord
+from src.health.models.person_info_model import PersonInfoRecord
+from src.health.schemas.health_insight_schema import BaseHealthInsightResponse, HealthInsightMetrics
+from src.health.services.errors import HealthError
+
+_LOOKBACK_DAYS = 7
+
+_BASELINE_SYSTEM_PROMPT = """You are an AI health analysis assistant. You will receive a user's basic health
+profile (sex, age, height, weight, allergy, medical history) together with their average vital-sign data over
+the last 7 days (heart rate, blood pressure, blood oxygen, body temperature, HRV, respiratory rate, stress).
+
+Using the profile, establish a personalized baseline "normal" range for each metric below, then compare the
+7-day average data against that baseline to decide a status label for each metric.
+
+Return a JSON object with exactly these keys:
+{
+  "health_score": <number 0-100, overall health score>,
+  "health_score_label": <string>,
+  "health_score_threshold": "<low>|<mid>|<high>",
+  "heart_rate": <number>,
+  "heart_rate_label": <string>,
+  "heart_rate_threshold": "<low>|<mid>|<high>",
+  "blood_pressure": "<systolic>/<diastolic>",
+  "blood_pressure_label": <string>,
+  "blood_pressure_threshold": "<low_sys>/<low_dia>|<mid_sys>/<mid_dia>|<high_sys>/<high_dia>",
+  "blood_oxygen": <number>,
+  "blood_oxygen_label": <string>,
+  "blood_oxygen_threshold": "<low>|<mid>|<high>",
+  "body_temperature": <number>,
+  "body_temperature_label": <string>,
+  "body_temperature_threshold": "<low>|<mid>|<high>",
+  "hrv": <number>,
+  "hrv_label": <string>,
+  "hrv_threshold": "<low>|<mid>|<high>",
+  "res_rate": <number>,
+  "res_rate_label": <string>,
+  "res_rate_threshold": "<low>|<mid>|<high>",
+  "pressure": <number>,
+  "pressure_label": <string>,
+  "pressure_threshold": "<low>|<mid>|<high>",
+  "summary": <string>
+}
+
+Rules:
+- Every "*_label" field must be exactly one of: 正常, 穩定, 注意 (do not translate these three words,
+  regardless of the response language instructed below; they must always stay in Traditional Chinese).
+- Each "*_threshold" field must be a personalized baseline expressed as three values separated by "|",
+  derived from the user's profile, not a generic clinical constant.
+- Only the "summary" field should follow the language instruction below.
+- Do not diagnose disease or recommend medication or medical treatment.
+- Base the analysis only on the provided data; if data for a metric is missing, still return your best
+  estimate of the label using the available profile and data, never omit a key.
+- Return JSON only."""
+
+
+def _average(values: list[float | None]) -> float | None:
+    present = [v for v in values if v is not None]
+    if not present:
+        return None
+    return round(sum(present) / len(present), 1)
+
+
+def _week_dates(end_date: date, days: int) -> list[str]:
+    return [(end_date - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
+
+
+def _field(row: HealthRecord, key: str, sub_key: str) -> float | None:
+    data = row.data or {}
+    sub = data.get(key)
+    return sub.get(sub_key) if sub else None
+
+
+def _aggregate_week_health(db: Session, device_id: int, dates: list[str]) -> dict:
+    rows = (
+        db.query(HealthRecord)
+        .filter(HealthRecord.device_id == device_id, HealthRecord.date.in_(dates))
+        .all()
+    )
+    return {
+        "heartRate": _average([_field(r, "heartRate", "ppgs") for r in rows]),
+        "systolic": _average([_field(r, "bloodPressure", "systolic") for r in rows]),
+        "diastolic": _average([_field(r, "bloodPressure", "diastolic") for r in rows]),
+        "bloodOxygen": _average([_field(r, "bloodOxygen", "oxygens") for r in rows]),
+        "bodyTemperature": _average([_field(r, "bodyTemperature", "temperature") for r in rows]),
+        "hrv": _average([_field(r, "hrv", "values") for r in rows]),
+        "respiratoryRate": _average([_field(r, "respiratory", "resRates") for r in rows]),
+        "stress": _average([_field(r, "stress", "pressure") for r in rows]),
+        "daysWithData": len(rows),
+    }
+
+
+def _person_info_payload(info: PersonInfoRecord) -> dict:
+    return {
+        "sex": info.sex,
+        "age": info.age,
+        "height": info.height,
+        "weight": info.weight,
+        "allergy": info.allergy or "無",
+        "medicalHistory": info.medical_history or "無",
+    }
+
+
+def _generate_baseline(payload: dict, language: str) -> dict:
+    prompt = ai_client.with_language(_BASELINE_SYSTEM_PROMPT, language)
+    try:
+        result, _usage = ai_client.generate_json(prompt, f"Input:\n{json.dumps(payload, default=str)}")
+        return result
+    except Exception as e:  # noqa: BLE001
+        logger.exception("AI base health insight generation failed")
+        raise HealthError(502, f"Unable to generate health insight: {e}") from e
+
+
+def _next_session(db: Session, device_id: int) -> int:
+    last = (
+        db.query(HealthInsightRecord)
+        .filter(HealthInsightRecord.device_id == device_id)
+        .order_by(HealthInsightRecord.session.desc())
+        .first()
+    )
+    return (last.session + 1) if last else 1
+
+
+def _to_response(mac_address: str, record: HealthInsightRecord) -> BaseHealthInsightResponse:
+    return BaseHealthInsightResponse(
+        session=record.session,
+        user=mac_address,
+        start_date=record.start_date,
+        end_date=record.end_date,
+        metrics=HealthInsightMetrics(
+            health_score=record.health_score,
+            health_score_label=record.health_score_label,
+            health_score_threshold=record.health_score_threshold,
+            heart_rate=record.heart_rate,
+            heart_rate_label=record.heart_rate_label,
+            heart_rate_threshold=record.heart_rate_threshold,
+            blood_pressure=record.blood_pressure,
+            blood_pressure_label=record.blood_pressure_label,
+            blood_pressure_threshold=record.blood_pressure_threshold,
+            blood_oxygen=record.blood_oxygen,
+            blood_oxygen_label=record.blood_oxygen_label,
+            blood_oxygen_threshold=record.blood_oxygen_threshold,
+            body_temperature=record.body_temperature,
+            body_temperature_label=record.body_temperature_label,
+            body_temperature_threshold=record.body_temperature_threshold,
+            hrv=record.hrv,
+            hrv_label=record.hrv_label,
+            hrv_threshold=record.hrv_threshold,
+            res_rate=record.res_rate,
+            res_rate_label=record.res_rate_label,
+            res_rate_threshold=record.res_rate_threshold,
+            pressure=record.pressure,
+            pressure_label=record.pressure_label,
+            pressure_threshold=record.pressure_threshold,
+        ),
+        summary=record.summary,
+    )
+
+
+def generate_base_health_insight(
+    db: Session, mac_address: str, language: str = "en"
+) -> BaseHealthInsightResponse:
+    device = db.query(DeviceRecord).filter(DeviceRecord.mac_address == mac_address).first()
+    if device is None:
+        raise HealthError(404, "找不到對應設備")
+
+    person_info = db.query(PersonInfoRecord).filter(PersonInfoRecord.device_id == device.id).first()
+    if person_info is None:
+        raise HealthError(400, "請先上傳個人健康基礎信息")
+
+    end_date = datetime.now(timezone.utc).date()
+    start_date = end_date - timedelta(days=_LOOKBACK_DAYS - 1)
+    dates = _week_dates(end_date, _LOOKBACK_DAYS)
+
+    week_agg = _aggregate_week_health(db, device.id, dates)
+    if week_agg["daysWithData"] == 0:
+        raise HealthError(404, "近7天無健康數據，無法產生分析")
+
+    payload = {
+        "personInfo": _person_info_payload(person_info),
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "weeklyAverageData": week_agg,
+    }
+    result = _generate_baseline(payload, language)
+
+    session = _next_session(db, device.id)
+    record = HealthInsightRecord(
+        device_id=device.id,
+        session=session,
+        start_date=start_date.isoformat(),
+        end_date=end_date.isoformat(),
+        health_score=result.get("health_score"),
+        health_score_label=result.get("health_score_label"),
+        health_score_threshold=result.get("health_score_threshold"),
+        heart_rate=result.get("heart_rate"),
+        heart_rate_label=result.get("heart_rate_label"),
+        heart_rate_threshold=result.get("heart_rate_threshold"),
+        blood_pressure=result.get("blood_pressure"),
+        blood_pressure_label=result.get("blood_pressure_label"),
+        blood_pressure_threshold=result.get("blood_pressure_threshold"),
+        blood_oxygen=result.get("blood_oxygen"),
+        blood_oxygen_label=result.get("blood_oxygen_label"),
+        blood_oxygen_threshold=result.get("blood_oxygen_threshold"),
+        body_temperature=result.get("body_temperature"),
+        body_temperature_label=result.get("body_temperature_label"),
+        body_temperature_threshold=result.get("body_temperature_threshold"),
+        hrv=result.get("hrv"),
+        hrv_label=result.get("hrv_label"),
+        hrv_threshold=result.get("hrv_threshold"),
+        res_rate=result.get("res_rate"),
+        res_rate_label=result.get("res_rate_label"),
+        res_rate_threshold=result.get("res_rate_threshold"),
+        pressure=result.get("pressure"),
+        pressure_label=result.get("pressure_label"),
+        pressure_threshold=result.get("pressure_threshold"),
+        summary=result.get("summary", ""),
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    return _to_response(mac_address, record)

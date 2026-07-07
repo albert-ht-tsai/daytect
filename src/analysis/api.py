@@ -9,7 +9,8 @@ from src.analysis.schemas.analysis_schema import (
     KeepRequest,
     PicIdentifyResponse,
 )
-from src.analysis.services import analysis_service
+from src.analysis.schemas.illness_recovery_schema import IllnessRecoveryRequest, IllnessRecoveryResponse
+from src.analysis.services import analysis_service, illness_recovery_service
 from src.analysis.services.errors import AnalysisError
 from src.core.deps import SessionDep
 
@@ -80,3 +81,22 @@ def pic_answer_endpoint(macAddress: str, pic_id: str, db: SessionDep, language: 
     except AnalysisError as e:
         return _error_response(e)
     return {"success": True, "message": answer, "session_id": session_id}
+
+
+@router.post("/illness-recovery", response_model=IllnessRecoveryResponse)
+def create_illness_recovery_endpoint(body: IllnessRecoveryRequest, db: SessionDep):
+    try:
+        result = illness_recovery_service.generate_illness_recovery(
+            db, body.macAddress, body.date, body.language
+        )
+    except AnalysisError as e:
+        return _error_response(e)
+    return result
+
+
+@router.get("/illness-recovery", response_model=IllnessRecoveryResponse)
+def get_illness_recovery_endpoint(macAddress: str, date: str, db: SessionDep):
+    result = illness_recovery_service.get_illness_recovery(db, macAddress, date)
+    if result is None:
+        return _error_response(AnalysisError(404, "找不到對應的生病/恢復分析結果"))
+    return result
