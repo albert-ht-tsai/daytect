@@ -19,15 +19,13 @@ def _error_response(error: HealthError) -> JSONResponse:
     )
 
 
-@router.post("/{macAddress}/person-info")
-def upload_person_info_endpoint(macAddress: str, body: PersonInfoUploadRequest, db: SessionDep):
-    device = person_info_service.upload_person_info(db, macAddress, body)
-    if device is None:
-        return _error_response(HealthError(404, "找不到對應設備"))
+@router.post("/person-info")
+def upload_person_info_endpoint(body: PersonInfoUploadRequest, db: SessionDep):
+    person_info_service.upload_person_info(db, body)
     return {"success": True, "message": "Person info saved successfully"}
 
 
-@router.get("/{macAddress}/base-health-insight", response_model=BaseHealthInsightResponse)
+@router.get("/base-health-insight", response_model=BaseHealthInsightResponse)
 def get_base_health_insight_endpoint(
     macAddress: str, db: SessionDep, language: Literal["en", "zh"] = "en"
 ):

@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class PersonInfoUploadRequest(BaseModel):
+    macAddress: str
     sex: Literal["male", "female"]
     age: int = Field(ge=0, le=999)
     height: float = Field(ge=0, le=999)

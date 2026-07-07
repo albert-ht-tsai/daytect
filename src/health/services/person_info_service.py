@@ -5,10 +5,14 @@ from src.health.models.person_info_model import PersonInfoRecord
 from src.health.schemas.person_info_schema import PersonInfoUploadRequest
 
 
-def upload_person_info(db: Session, mac_address: str, body: PersonInfoUploadRequest) -> DeviceRecord | None:
-    device = db.query(DeviceRecord).filter(DeviceRecord.mac_address == mac_address).first()
+def upload_person_info(db: Session, body: PersonInfoUploadRequest) -> DeviceRecord:
+    """Finds the device by macAddress, creating it on the fly if it hasn't been
+    registered yet (e.g. via POST /device), so person-info can always be saved."""
+    device = db.query(DeviceRecord).filter(DeviceRecord.mac_address == body.macAddress).first()
     if device is None:
-        return None
+        device = DeviceRecord(mac_address=body.macAddress)
+        db.add(device)
+        db.flush()
 
     existing = db.query(PersonInfoRecord).filter(PersonInfoRecord.device_id == device.id).first()
 
