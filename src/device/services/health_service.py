@@ -5,10 +5,14 @@ from src.device.models.health_model import HealthRecord
 from src.device.schemas.health_schema import HealthUploadRequest
 
 
-def upload_health(db: Session, body: HealthUploadRequest) -> DeviceRecord | None:
+def upload_health(db: Session, body: HealthUploadRequest) -> DeviceRecord:
+    """Finds the device by macAddress, creating it on the fly if it hasn't been
+    registered yet (e.g. via POST /device), so health data can always be saved."""
     device = db.query(DeviceRecord).filter(DeviceRecord.mac_address == body.macAddress).first()
     if device is None:
-        return None
+        device = DeviceRecord(mac_address=body.macAddress)
+        db.add(device)
+        db.flush()
 
     existing = db.query(HealthRecord).filter(
         HealthRecord.device_id == device.id,

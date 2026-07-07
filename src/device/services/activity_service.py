@@ -5,10 +5,14 @@ from src.device.models.device_model import DeviceRecord
 from src.device.schemas.activity_schema import ActivityUploadRequest
 
 
-def upload_activity(db: Session, body: ActivityUploadRequest) -> DeviceRecord | None:
+def upload_activity(db: Session, body: ActivityUploadRequest) -> DeviceRecord:
+    """Finds the device by macAddress, creating it on the fly if it hasn't been
+    registered yet (e.g. via POST /device), so activity data can always be saved."""
     device = db.query(DeviceRecord).filter(DeviceRecord.mac_address == body.macAddress).first()
     if device is None:
-        return None
+        device = DeviceRecord(mac_address=body.macAddress)
+        db.add(device)
+        db.flush()
 
     existing = db.query(ActivityRecord).filter(
         ActivityRecord.device_id == device.id,

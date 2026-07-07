@@ -66,10 +66,14 @@ def _compute_summary(records: list[SleepRecordPayload]) -> dict:
     }
 
 
-def upload_sleep(db: Session, body: SleepUploadRequest) -> DeviceRecord | None:
+def upload_sleep(db: Session, body: SleepUploadRequest) -> DeviceRecord:
+    """Finds the device by macAddress, creating it on the fly if it hasn't been
+    registered yet (e.g. via POST /device), so sleep data can always be saved."""
     device = db.query(DeviceRecord).filter(DeviceRecord.mac_address == body.macAddress).first()
     if device is None:
-        return None
+        device = DeviceRecord(mac_address=body.macAddress)
+        db.add(device)
+        db.flush()
 
     sorted_records = sorted(body.sleepRecords, key=_sort_key)
     sleep_records = [r.model_dump() for r in sorted_records]

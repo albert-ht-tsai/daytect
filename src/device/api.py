@@ -26,9 +26,7 @@ def get_device_endpoint(macAddress: str, db: SessionDep):
 
 @router.post("/device/sleep")
 def upload_sleep_endpoint(body: SleepUploadRequest, db: SessionDep):
-    device = sleep_service.upload_sleep(db, body)
-    if device is None:
-        raise HTTPException(status_code=404, detail={"code": 404, "message": "Device not found"})
+    sleep_service.upload_sleep(db, body)
     return {"success": True, "message": "Sleep data saved successfully"}
 
 
@@ -42,15 +40,11 @@ def get_sleep_endpoint(macAddress: str, date: str, db: SessionDep):
 
 @router.post("/device/activity")
 def upload_activity_endpoint(body: ActivityUploadRequest, db: SessionDep):
-    device = activity_service.upload_activity(db, body)
-    if device is None:
-        raise HTTPException(status_code=404, detail={"code": 404, "message": "Device not found"})
+    activity_service.upload_activity(db, body)
     return {"success": True, "message": "Activity data saved successfully"}
 
 
 @router.post("/device/health")
 def upload_health_endpoint(body: HealthUploadRequest, db: SessionDep):
-    device = health_service.upload_health(db, body)
-    if device is None:
-        raise HTTPException(status_code=404, detail={"code": 404, "message": "Device not found"})
+    health_service.upload_health(db, body)
     return {"success": True, "message": "Health data saved successfully"}

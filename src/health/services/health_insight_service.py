@@ -19,7 +19,9 @@ _LOOKBACK_DAYS = 7
 _BASELINE_SYSTEM_PROMPT = """You are an AI health analysis assistant. You will receive a user's basic health
 profile (sex, age, height, weight, allergy, medical history) together with their average data over the last 7
 days: vital signs (heart rate, blood pressure, blood oxygen, body temperature, HRV, respiratory rate, stress),
-sleep (quality score, total sleep duration in minutes), and activity (step count).
+sleep (quality score, total daily sleep duration — each day's sleep segments already summed, then averaged
+across the 7 days — given as both "sleepDuration" in minutes and "sleepDurationHours" in hours, same value,
+two units), and activity (step count).
 
 Using the profile, establish a personalized baseline "normal" range for each metric below, then compare the
 7-day average data against that baseline to decide a status label for each metric.
@@ -126,9 +128,13 @@ def _aggregate_week_sleep_activity(db: Session, device_id: int, dates: list[str]
         .filter(ActivityRecord.device_id == device_id, ActivityRecord.date.in_(dates))
         .all()
     )
+    sleep_duration_minutes = _average([(row.sleep_summary or {}).get("allSleepTime") for row in sleep_rows])
     return {
         "sleepQuality": _average([(row.sleep_summary or {}).get("sleepQuality") for row in sleep_rows]),
-        "sleepDuration": _average([(row.sleep_summary or {}).get("allSleepTime") for row in sleep_rows]),
+        # kept in minutes (matches SleepRecord/illness-recovery's unit); hours included only as a
+        # human-readable hint for the AI prompt, not a separate source of truth.
+        "sleepDuration": sleep_duration_minutes,
+        "sleepDurationHours": round(sleep_duration_minutes / 60, 2) if sleep_duration_minutes is not None else None,
         "activitySteps": _average([(row.data or {}).get("stepValue") for row in activity_rows]),
     }
 
