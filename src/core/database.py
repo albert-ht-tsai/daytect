@@ -58,6 +58,15 @@ def _run_migrations() -> None:
         "ALTER TABLE sleep_records ADD COLUMN IF NOT EXISTS sleep_summary JSON",
         "ALTER TABLE analysis_records ADD COLUMN IF NOT EXISTS session_id VARCHAR(64)",
         "ALTER TABLE analysis_pic_records ADD COLUMN IF NOT EXISTS session_id VARCHAR(64)",
+        "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS sleep_quality FLOAT",
+        "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS sleep_quality_label VARCHAR(10)",
+        "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS sleep_quality_threshold VARCHAR(50)",
+        "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS sleep_duration FLOAT",
+        "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS sleep_duration_label VARCHAR(10)",
+        "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS sleep_duration_threshold VARCHAR(50)",
+        "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS activity_steps FLOAT",
+        "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS activity_steps_label VARCHAR(10)",
+        "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS activity_steps_threshold VARCHAR(50)",
     ]
     with engine.begin() as conn:
         for stmt in stmts:
