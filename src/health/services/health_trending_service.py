@@ -91,21 +91,33 @@ def _average(values: list[float]) -> float | None:
 
 
 def _overall_scores_for_dates(db: Session, device_id: int, dates: list[str]) -> dict[str, float]:
-    """overall score per date, preferring the cached DailyHealthSummaryRecord.overall_score
-    already written by /v1/summary, and falling back to a live, on-the-fly deterministic
-    computation from the raw sleep/activity/health records for any date not cached yet — so
-    trending works even for devices that never had /v1/summary called on them."""
+    """overall score per date, requiring both a health record and a matching sleep record for
+    that same date. sleep/activity/health can be uploaded on slightly different dates (a sleep
+    session spanning past midnight can land on the previous day while activity/health keep
+    logging under the health-device's date), so health is treated as the anchor: a date only
+    produces a score if it has health data AND sleep data for that exact date; if sleep is
+    missing, the whole day is excluded rather than partially averaged from health+activity
+    alone — it's marked as insufficient data by simply not appearing in the trending series.
+
+    Prefers the cached DailyHealthSummaryRecord row already written by /v1/summary (which also
+    stores sleep_score/health_score per day), and falls back to a live, on-the-fly deterministic
+    computation from the raw records for any date not cached yet — so trending works even for
+    devices that never had /v1/summary called on them."""
     cached_rows = (
         db.query(DailyHealthSummaryRecord)
         .filter(DailyHealthSummaryRecord.device_id == device_id, DailyHealthSummaryRecord.date.in_(dates))
         .all()
     )
-    scores = {row.date: row.overall_score for row in cached_rows if row.overall_score is not None}
+    scores = {
+        row.date: row.overall_score
+        for row in cached_rows
+        if row.overall_score is not None and row.sleep_score is not None and row.health_score is not None
+    }
     missing = [d for d in dates if d not in scores]
     if missing:
         computed = summary_service.compute_daily_scores_batch(db, device_id, missing)
-        for d, (_sleep, _activity, _health, overall) in computed.items():
-            if overall is not None:
+        for d, (sleep_score, _activity_score, health_score, overall) in computed.items():
+            if overall is not None and sleep_score is not None and health_score is not None:
                 scores[d] = overall
     return scores
 
