@@ -163,6 +163,45 @@ def _score_health(agg: dict) -> float | None:
     return scoring.weighted_average(components)
 
 
+def compute_daily_scores_batch(
+    db: Session, device_id: int, dates: list[str]
+) -> dict[str, tuple[float | None, float | None, float | None, float | None]]:
+    """Deterministically computes (sleep_score, activity_score, health_score, overall_score)
+    for each date directly from raw sleep/activity/health records, without calling AI or
+    writing to the database. Lets other features (e.g. health trending) get the numeric
+    score for a date that hasn't gone through the /v1/summary AI-summary flow yet."""
+    sleep_rows = {
+        r.date: r
+        for r in db.query(SleepRecord).filter(SleepRecord.device_id == device_id, SleepRecord.date.in_(dates)).all()
+    }
+    activity_rows = {
+        r.date: r
+        for r in db.query(ActivityRecord)
+        .filter(ActivityRecord.device_id == device_id, ActivityRecord.date.in_(dates))
+        .all()
+    }
+    health_rows = {
+        r.date: r
+        for r in db.query(HealthRecord).filter(HealthRecord.device_id == device_id, HealthRecord.date.in_(dates)).all()
+    }
+
+    results = {}
+    for d in dates:
+        sleep_segments = (sleep_rows[d].sleep_records or []) if d in sleep_rows else []
+        sleep_score = _score_sleep(sleep_segments)
+        activity_score = _score_activity(_aggregate_activity(activity_rows.get(d)))
+        health_score = _score_health(_aggregate_health(health_rows.get(d)))
+        overall_score = scoring.weighted_average(
+            [
+                (sleep_score, _CATEGORY_WEIGHT),
+                (activity_score, _CATEGORY_WEIGHT),
+                (health_score, _CATEGORY_WEIGHT),
+            ]
+        )
+        results[d] = (sleep_score, activity_score, health_score, overall_score)
+    return results
+
+
 def _generate_category_text(system_prompt: str, payload: dict, language: str) -> tuple[str, str]:
     prompt = ai_client.with_language(system_prompt, language)
     try:
