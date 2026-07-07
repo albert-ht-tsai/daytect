@@ -5,8 +5,10 @@ from sqlalchemy.orm import Session
 
 from src.core import ai_client
 from src.core.logging import logger
+from src.device.models.activity_model import ActivityRecord
 from src.device.models.device_model import DeviceRecord
 from src.device.models.health_model import HealthRecord
+from src.device.models.sleep_model import SleepRecord
 from src.health.models.health_insight_model import HealthInsightRecord
 from src.health.models.person_info_model import PersonInfoRecord
 from src.health.schemas.health_insight_schema import BaseHealthInsightResponse, HealthInsightMetrics
@@ -15,8 +17,9 @@ from src.health.services.errors import HealthError
 _LOOKBACK_DAYS = 7
 
 _BASELINE_SYSTEM_PROMPT = """You are an AI health analysis assistant. You will receive a user's basic health
-profile (sex, age, height, weight, allergy, medical history) together with their average vital-sign data over
-the last 7 days (heart rate, blood pressure, blood oxygen, body temperature, HRV, respiratory rate, stress).
+profile (sex, age, height, weight, allergy, medical history) together with their average data over the last 7
+days: vital signs (heart rate, blood pressure, blood oxygen, body temperature, HRV, respiratory rate, stress),
+sleep (quality score, total sleep duration in minutes), and activity (step count).
 
 Using the profile, establish a personalized baseline "normal" range for each metric below, then compare the
 7-day average data against that baseline to decide a status label for each metric.
@@ -47,6 +50,15 @@ Return a JSON object with exactly these keys:
   "pressure": <number>,
   "pressure_label": <string>,
   "pressure_threshold": "<low>|<mid>|<high>",
+  "sleep_quality": <number>,
+  "sleep_quality_label": <string>,
+  "sleep_quality_threshold": "<low>|<mid>|<high>",
+  "sleep_duration": <number, minutes>,
+  "sleep_duration_label": <string>,
+  "sleep_duration_threshold": "<low>|<mid>|<high>",
+  "activity_steps": <number>,
+  "activity_steps_label": <string>,
+  "activity_steps_threshold": "<low>|<mid>|<high>",
   "summary": <string>
 }
 
@@ -95,6 +107,24 @@ def _aggregate_week_health(db: Session, device_id: int, dates: list[str]) -> dic
         "respiratoryRate": _average([_field(r, "respiratory", "resRates") for r in rows]),
         "stress": _average([_field(r, "stress", "pressure") for r in rows]),
         "daysWithData": len(rows),
+    }
+
+
+def _aggregate_week_sleep_activity(db: Session, device_id: int, dates: list[str]) -> dict:
+    sleep_rows = (
+        db.query(SleepRecord)
+        .filter(SleepRecord.device_id == device_id, SleepRecord.date.in_(dates))
+        .all()
+    )
+    activity_rows = (
+        db.query(ActivityRecord)
+        .filter(ActivityRecord.device_id == device_id, ActivityRecord.date.in_(dates))
+        .all()
+    )
+    return {
+        "sleepQuality": _average([(row.sleep_summary or {}).get("sleepQuality") for row in sleep_rows]),
+        "sleepDuration": _average([(row.sleep_summary or {}).get("allSleepTime") for row in sleep_rows]),
+        "activitySteps": _average([(row.data or {}).get("stepValue") for row in activity_rows]),
     }
 
 
@@ -160,6 +190,15 @@ def _to_response(mac_address: str, record: HealthInsightRecord) -> BaseHealthIns
             pressure=record.pressure,
             pressure_label=record.pressure_label,
             pressure_threshold=record.pressure_threshold,
+            sleep_quality=record.sleep_quality,
+            sleep_quality_label=record.sleep_quality_label,
+            sleep_quality_threshold=record.sleep_quality_threshold,
+            sleep_duration=record.sleep_duration,
+            sleep_duration_label=record.sleep_duration_label,
+            sleep_duration_threshold=record.sleep_duration_threshold,
+            activity_steps=record.activity_steps,
+            activity_steps_label=record.activity_steps_label,
+            activity_steps_threshold=record.activity_steps_threshold,
         ),
         summary=record.summary,
     )
@@ -184,11 +223,13 @@ def generate_base_health_insight(
     if week_agg["daysWithData"] == 0:
         raise HealthError(404, "近7天無健康數據，無法產生分析")
 
+    sleep_activity_agg = _aggregate_week_sleep_activity(db, device.id, dates)
+
     payload = {
         "personInfo": _person_info_payload(person_info),
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
-        "weeklyAverageData": week_agg,
+        "weeklyAverageData": {**week_agg, **sleep_activity_agg},
     }
     result = _generate_baseline(payload, language)
 
@@ -222,6 +263,15 @@ def generate_base_health_insight(
         pressure=result.get("pressure"),
         pressure_label=result.get("pressure_label"),
         pressure_threshold=result.get("pressure_threshold"),
+        sleep_quality=result.get("sleep_quality"),
+        sleep_quality_label=result.get("sleep_quality_label"),
+        sleep_quality_threshold=result.get("sleep_quality_threshold"),
+        sleep_duration=result.get("sleep_duration"),
+        sleep_duration_label=result.get("sleep_duration_label"),
+        sleep_duration_threshold=result.get("sleep_duration_threshold"),
+        activity_steps=result.get("activity_steps"),
+        activity_steps_label=result.get("activity_steps_label"),
+        activity_steps_threshold=result.get("activity_steps_threshold"),
         summary=result.get("summary", ""),
     )
     db.add(record)

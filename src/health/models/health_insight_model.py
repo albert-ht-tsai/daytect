@@ -47,6 +47,18 @@ class HealthInsightRecord(Base):
     pressure_label = Column(String(10), nullable=True)
     pressure_threshold = Column(String(50), nullable=True)
 
+    sleep_quality = Column(Float, nullable=True)
+    sleep_quality_label = Column(String(10), nullable=True)
+    sleep_quality_threshold = Column(String(50), nullable=True)
+
+    sleep_duration = Column(Float, nullable=True)
+    sleep_duration_label = Column(String(10), nullable=True)
+    sleep_duration_threshold = Column(String(50), nullable=True)
+
+    activity_steps = Column(Float, nullable=True)
+    activity_steps_label = Column(String(10), nullable=True)
+    activity_steps_threshold = Column(String(50), nullable=True)
+
     summary = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

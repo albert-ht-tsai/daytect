@@ -13,18 +13,20 @@ from src.device.models.activity_model import ActivityRecord
 from src.device.models.device_model import DeviceRecord
 from src.device.models.health_model import HealthRecord
 from src.device.models.sleep_model import SleepRecord
+from src.health.models.health_insight_model import HealthInsightRecord
 from src.health.models.person_info_model import PersonInfoRecord
 
-BASELINE_WINDOW_DAYS = 30
 RECENT_DAYS = 3  # trailing days evaluated for persistence/trend (rule 4/8)
 HIGH_ACTIVITY_RATIO = 1.3
 LOW_SLEEP_RATIO = 0.85
 
 _SUMMARY_SYSTEM_PROMPT = """You are a health data analysis assistant describing a user's illness/recovery
-status. You will receive the user's basic profile together with ALREADY-DECIDED classification labels
-(illness_level, recovery_status, trend, joint_status), an ALREADY-COMPUTED list of main findings, and an
-optional alternative explanation. Write a short, natural-language narrative summary describing today's status
-for the user, referencing the given findings.
+status. You will receive the user's basic profile, the personalized baseline the user's own
+"base-health-insight" analysis already established (their normal heart rate, body temperature, HRV, sleep and
+activity levels), together with ALREADY-DECIDED classification labels (illness_level, recovery_status, trend,
+joint_status), an ALREADY-COMPUTED list of main findings, and an optional alternative explanation. Write a
+short, natural-language narrative summary describing today's status for the user, referencing the given
+findings and how they compare to that personal baseline.
 Return a JSON object: {"summary": "<string>"}
 Rules:
 - Do NOT invent new numbers or findings beyond what is given.
@@ -75,12 +77,18 @@ def _daily_metrics_map(db: Session, device_id: int, dates: list[str]) -> dict[st
     return by_date
 
 
-def _compute_baseline(by_date: dict[str, dict], baseline_dates: list[str]) -> dict[str, float | None]:
-    baseline: dict[str, float | None] = {}
-    for metric in rules.METRIC_RULES:
-        values = [by_date[d].get(metric) for d in baseline_dates if by_date[d].get(metric) is not None]
-        baseline[metric] = round(sum(values) / len(values), 2) if values else None
-    return baseline
+def _baseline_from_health_insight(record: HealthInsightRecord) -> dict[str, float | None]:
+    """Maps the user's existing base-health-insight baseline onto the rule engine's metric
+    names, so illness/recovery deviations are judged against the same personal baseline
+    base-health-insight already established, instead of a separately computed one."""
+    return {
+        "resting_hr": record.heart_rate,
+        "body_temperature": record.body_temperature,
+        "hrv": record.hrv,
+        "sleep_quality": record.sleep_quality,
+        "sleep_duration": record.sleep_duration,
+        "activity_steps": record.activity_steps,
+    }
 
 
 def _person_info_payload(info: PersonInfoRecord | None) -> dict:
@@ -128,17 +136,24 @@ def generate_illness_recovery(
     if device is None:
         raise AnalysisError(404, "找不到對應設備")
 
-    all_dates = _date_range(date, BASELINE_WINDOW_DAYS)
-    baseline_dates, recent_dates = all_dates[:-RECENT_DAYS], all_dates[-RECENT_DAYS:]
-    by_date = _daily_metrics_map(db, device.id, all_dates)
+    health_insight = (
+        db.query(HealthInsightRecord)
+        .filter(HealthInsightRecord.device_id == device.id)
+        .order_by(HealthInsightRecord.session.desc())
+        .first()
+    )
+    if health_insight is None:
+        raise AnalysisError(400, "請先產生 base-health-insight 基準線")
 
-    baseline_days_with_data = sum(1 for d in baseline_dates if any(v is not None for v in by_date[d].values()))
+    recent_dates = _date_range(date, RECENT_DAYS)
+    by_date = _daily_metrics_map(db, device.id, recent_dates)
+
     today_has_data = any(v is not None for v in by_date[date].values())
-    if baseline_days_with_data == 0 and not today_has_data:
-        raise AnalysisError(404, "近期無健康數據，無法產生分析")
+    if not today_has_data:
+        raise AnalysisError(404, "今日無健康數據，無法產生分析")
 
-    baseline = _compute_baseline(by_date, baseline_dates)
-    data_sufficient = baseline_days_with_data >= rules.MIN_BASELINE_DAYS and today_has_data
+    baseline = _baseline_from_health_insight(health_insight)
+    data_sufficient = today_has_data
 
     day_signals = [rules.evaluate_day(d, by_date[d], baseline) for d in recent_dates]
 
@@ -167,6 +182,12 @@ def generate_illness_recovery(
     payload = {
         "personInfo": _person_info_payload(person_info),
         "date": date,
+        "baselineSource": {
+            "session": health_insight.session,
+            "startDate": health_insight.start_date,
+            "endDate": health_insight.end_date,
+        },
+        "personalBaseline": baseline,
         "illness_level": illness_level,
         "recovery_status": recovery_status,
         "trend": trend,

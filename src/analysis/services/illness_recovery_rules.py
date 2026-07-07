@@ -15,7 +15,6 @@ RecoveryStatus = Literal["recovered", "partially_recovered", "not_recovered", "u
 Trend = Literal["improving", "stable", "worsening", "unknown"]
 JointStatus = Literal["NORMAL", "UNDER_RECOVERED", "POSSIBLE_ILLNESS", "POSSIBLE_ILLNESS_RECOVERING", "UNKNOWN"]
 
-MIN_BASELINE_DAYS = 5
 PERSISTENCE_DAYS = 2
 CO_DEVIATION_HIGH = 3
 CO_DEVIATION_MEDIUM = 2

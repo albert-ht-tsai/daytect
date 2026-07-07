@@ -34,6 +34,18 @@ class HealthInsightMetrics(BaseModel):
     pressure_label: str | None = None
     pressure_threshold: str | None = None
 
+    sleep_quality: float | None = None
+    sleep_quality_label: str | None = None
+    sleep_quality_threshold: str | None = None
+
+    sleep_duration: float | None = None
+    sleep_duration_label: str | None = None
+    sleep_duration_threshold: str | None = None
+
+    activity_steps: float | None = None
+    activity_steps_label: str | None = None
+    activity_steps_threshold: str | None = None
+
 
 class BaseHealthInsightResponse(BaseModel):
     session: int
