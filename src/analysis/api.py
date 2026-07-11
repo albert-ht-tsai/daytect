@@ -8,7 +8,9 @@ from src.analysis.schemas.analysis_schema import (
     PromptPreviewRequest,
     PromptPreviewResponse,
 )
-from src.analysis.services import analysis_service, summary_compaction_service
+from src.analysis.schemas.data_summary_schema import DataSummaryResponse
+from src.analysis.schemas.health_summary_schema import HealthSummaryRequest, HealthSummaryResponse
+from src.analysis.services import analysis_service, data_summary_service, health_summary_service, summary_compaction_service
 from src.analysis.services.errors import AnalysisError
 from src.core.deps import SessionDep
 
@@ -19,6 +21,16 @@ def _error_response(error: AnalysisError) -> JSONResponse:
     return JSONResponse(
         status_code=error.status_code,
         content={"success": False, "message": error.message, "data": None},
+    )
+
+
+def _coded_error_response(error: AnalysisError) -> JSONResponse:
+    """Shared by /data_summary and /health_summary, which both use the
+    {"success": false, "error": {"code": ..., "message": ...}} contract instead of the
+    {"success": false, "message": ..., "data": None} shape the rest of this module uses."""
+    return JSONResponse(
+        status_code=error.status_code,
+        content={"success": False, "error": {"code": error.code, "message": error.message}},
     )
 
 
@@ -105,4 +117,44 @@ def get_compact_summary_endpoint(macAddress: str, session_id: str, db: SessionDe
         "message": summary,
         "session_id": session_id,
         "source_count": source_count,
+    }
+
+
+@router.get("/data_summary", response_model=DataSummaryResponse)
+def data_summary_endpoint(db: SessionDep, macAddress: str | None = None, date: str | None = None):
+    try:
+        record, generated = data_summary_service.get_or_generate_summary(db, macAddress, date)
+    except AnalysisError as e:
+        return _coded_error_response(e)
+    return {
+        "success": True,
+        "data": {
+            "macAddress": record.mac_address,
+            "reportDate": record.report_date,
+            "startTime": record.start_time.astimezone(data_summary_service.REPORT_TZ).isoformat(),
+            "endTime": record.end_time.astimezone(data_summary_service.REPORT_TZ).isoformat(),
+            "summaryId": f"summary_{record.id}",
+            "generated": generated,
+            "responseId": record.response_id,
+            "report": record.ai_response or {},
+        },
+    }
+
+
+@router.post("/health_summary", response_model=HealthSummaryResponse)
+def health_summary_endpoint(body: HealthSummaryRequest, db: SessionDep):
+    try:
+        record = health_summary_service.generate_health_summary(
+            db, body.macAddress, body.userInput, body.previousResponseId
+        )
+    except AnalysisError as e:
+        return _coded_error_response(e)
+    return {
+        "success": True,
+        "data": {
+            "macAddress": record.mac_address,
+            "previousResponseId": record.data_summary_response_id,
+            "responseId": record.health_summary_response_id,
+            "healthSummary": record.health_summary or {},
+        },
     }

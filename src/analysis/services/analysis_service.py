@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from src.analysis.models.analysis_model import AnalysisRecord
 from src.analysis.models.analysis_pic_model import AnalysisPicRecord
-from src.analysis.services.answer_format import SUMMARY_KEYS, dump_summary, load_stored_summary
+from src.analysis.services.answer_format import SUMMARY_KEYS, dump_summary
 from src.analysis.services.errors import AnalysisError
 from src.core import ai_client, files
 from src.core.logging import logger
@@ -16,11 +16,6 @@ from src.device.models.device_model import DeviceRecord
 from src.health.services.health_insight_service import get_week_averages
 
 MAX_MESSAGE_LENGTH = 500
-
-# How many of this session's prior turns are folded into "conversationHistory" so the AI stays
-# consistent with what it already told the user (mirrors COMPACT_TURN_COUNT in
-# summary_compaction_service, but read independently since this is a different feature).
-HISTORY_TURN_COUNT = 10
 
 # Caps the AI reply length for the chat endpoint specifically (tighter than the shared
 # OPENAI_MAX_TOKENS default used by other AI features), so replies stay short and cheap.
@@ -36,17 +31,18 @@ _OUT_OF_SCOPE_MESSAGE = {
 }
 
 _REQUEST_SYSTEM_PROMPT = f"""You are a friendly health assistant chatting with a user about their fatigue
-status and health metrics. The input payload is assembled as follows:
+status and health metrics. This conversation is continued across turns via the Responses API's
+previous_response_id — you already have access to this session's prior turns natively; the input payload
+below only carries what changes turn to turn:
 - "userQuestion": the user's question, supplied by the frontend as text and/or derived from an attached
   image (an image is first identified separately, then its description is folded into this text).
 - "latestData": the user's own average health/sleep/activity metrics over the past 7 days, read by the
-  backend from its database (always the freshest data the backend has stored).
-- "conversationHistory": up to the last 10 turns of this same session already stored by the backend,
-  oldest first, each with that turn's "userQuestion" and the structured "reply" the assistant gave then.
+  backend from its database (always the freshest data the backend has stored — re-sent every turn since
+  it can change between turns even within the same conversation).
 - "prevSummary" (optional, only present when the frontend has one): a free-text summary of the
   conversation so far, supplied directly by the frontend.
-Reason over userQuestion together with latestData, conversationHistory, and prevSummary as a whole — do
-not answer from userQuestion in isolation — grounded in the reply rules below.
+Reason over userQuestion together with latestData, this session's prior turns, and prevSummary as a
+whole — do not answer from userQuestion in isolation — grounded in the reply rules below.
 
 {_REPLY_RULES}
 
@@ -106,20 +102,26 @@ def _resolve_session_id(session_id: str | None) -> str:
 
 
 def _generate_summary(
-    system_prompt: str, payload: dict, language: str, max_tokens: int | None = None
-) -> dict:
+    system_prompt: str,
+    payload: dict,
+    language: str,
+    previous_response_id: str | None,
+    max_tokens: int | None = None,
+) -> tuple[dict, str | None]:
     try:
         prompt = ai_client.with_language(system_prompt, language)
-        result, _usage = ai_client.generate_json(
-            prompt, f"Input:\n{json.dumps(payload, default=str)}", max_tokens=max_tokens
+        result, response_id, _usage = ai_client.generate_json_response(
+            prompt, f"Input:\n{json.dumps(payload, default=str)}", previous_response_id, max_output_tokens=max_tokens
         )
         if not result.get("inScope", True):
             fallback = _OUT_OF_SCOPE_MESSAGE.get(language, _OUT_OF_SCOPE_MESSAGE["en"])
-            return {"healthSummary": fallback, "fatigueSummary": "", "recoverySummary": ""}
-        return {key: str(result.get(key) or "") for key in SUMMARY_KEYS}
+            return {"healthSummary": fallback, "fatigueSummary": "", "recoverySummary": ""}, response_id
+        return {key: str(result.get(key) or "") for key in SUMMARY_KEYS}, response_id
     except Exception as e:  # noqa: BLE001
         logger.exception("AI analysis generation failed")
-        return {"healthSummary": f"Unable to generate analysis: {e}", "fatigueSummary": "", "recoverySummary": ""}
+        return {
+            "healthSummary": f"Unable to generate analysis: {e}", "fatigueSummary": "", "recoverySummary": "",
+        }, None
 
 
 def _identify_image(
@@ -176,26 +178,18 @@ def _resolve_user_question(
     return "\n".join(parts), pic_id
 
 
-def _history_payload(db: Session, mac_address: str, session_id: str) -> list[dict]:
-    """Last HISTORY_TURN_COUNT turns of this session already recorded, oldest first, so the AI
-    can stay consistent with what it already told the user earlier in this conversation. Runs
-    before the current turn is recorded, so it never includes the question being answered now."""
-    records = (
+def _latest_response_id(db: Session, mac_address: str, session_id: str) -> str | None:
+    """The OpenAI Responses API id of this session's most recent turn, passed back as
+    previous_response_id so OpenAI resumes the conversation server-side instead of this service
+    replaying history into the prompt. None for a brand-new session, or if the latest turn
+    predates the openai_response_id column, or if that turn's AI call itself failed."""
+    record = (
         db.query(AnalysisRecord)
         .filter(AnalysisRecord.mac_address == mac_address, AnalysisRecord.session_id == session_id)
         .order_by(AnalysisRecord.record_datetime.desc())
-        .limit(HISTORY_TURN_COUNT)
-        .all()
+        .first()
     )
-    records.reverse()
-    return [
-        {
-            "userQuestion": r.user_question,
-            "reply": load_stored_summary(r.system_answer),
-            "recordDatetime": r.record_datetime.isoformat() if r.record_datetime else None,
-        }
-        for r in records
-    ]
+    return record.openai_response_id if record else None
 
 
 def _record_analysis(
@@ -205,6 +199,7 @@ def _record_analysis(
     user_question: str,
     system_answer: dict,
     pic_id: str | None = None,
+    openai_response_id: str | None = None,
 ) -> None:
     record_datetime = datetime.now(timezone.utc)
     existing = db.query(AnalysisRecord).filter(
@@ -219,25 +214,18 @@ def _record_analysis(
         record_datetime=record_datetime,
         user_question=user_question,
         # system_answer is a Text column; the structured summary is JSON-encoded so it round-trips
-        # through load_stored_summary (see answer_format.py) for conversationHistory/compact-summary.
+        # through load_stored_summary (see answer_format.py) for compact-summary.
         system_answer=dump_summary(system_answer),
         pic_id=pic_id,
+        openai_response_id=openai_response_id,
     ))
     db.commit()
 
 
-def _build_ai_payload(
-    db: Session,
-    device: DeviceRecord,
-    mac_address: str,
-    session_id: str,
-    user_question: str,
-    prev_summary: str | None,
-) -> dict:
+def _build_ai_payload(db: Session, device: DeviceRecord, user_question: str, prev_summary: str | None) -> dict:
     payload = {
         "userQuestion": user_question,
         "latestData": get_week_averages(db, device.id),
-        "conversationHistory": _history_payload(db, mac_address, session_id),
     }
     if prev_summary and prev_summary.strip():
         payload["prevSummary"] = prev_summary.strip()
@@ -266,10 +254,13 @@ def handle_request(
         db, mac_address, session_id, message, image_bytes, content_type, language
     )
 
-    payload = _build_ai_payload(db, device, mac_address, session_id, user_question, prev_summary)
-    summary = _generate_summary(_REQUEST_SYSTEM_PROMPT, payload, language, max_tokens=HEALTH_CHAT_MAX_TOKENS)
+    previous_response_id = _latest_response_id(db, mac_address, session_id)
+    payload = _build_ai_payload(db, device, user_question, prev_summary)
+    summary, response_id = _generate_summary(
+        _REQUEST_SYSTEM_PROMPT, payload, language, previous_response_id, max_tokens=HEALTH_CHAT_MAX_TOKENS
+    )
 
-    _record_analysis(db, mac_address, session_id, user_question, summary, pic_id=pic_id)
+    _record_analysis(db, mac_address, session_id, user_question, summary, pic_id=pic_id, openai_response_id=response_id)
     return summary, session_id
 
 
@@ -294,12 +285,14 @@ def build_prompt_preview(
 
     session_id = _resolve_session_id(session_id)
     user_question = message.strip()
+    previous_response_id = _latest_response_id(db, mac_address, session_id)
 
-    payload = _build_ai_payload(db, device, mac_address, session_id, user_question, prev_summary)
+    payload = _build_ai_payload(db, device, user_question, prev_summary)
     system_prompt = ai_client.with_language(_REQUEST_SYSTEM_PROMPT, language)
 
     return {
         "session_id": session_id,
+        "previousResponseId": previous_response_id,
         "systemPrompt": system_prompt,
         "payload": payload,
         "userPrompt": f"Input:\n{json.dumps(payload, default=str)}",

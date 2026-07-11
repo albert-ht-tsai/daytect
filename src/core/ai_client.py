@@ -97,6 +97,47 @@ def generate_json(system_prompt: str, user_prompt: str, max_tokens: int | None =
     return _parse_completion(completion)
 
 
+def generate_json_response(
+    instructions: str,
+    input_text: str,
+    previous_response_id: str | None = None,
+    max_output_tokens: int | None = None,
+) -> tuple[dict, str, dict]:
+    """Like generate_json, but uses the Responses API so a multi-turn caller can pass
+    previous_response_id to resume a conversation OpenAI already has stored server-side,
+    instead of replaying the full conversation history into the prompt on every call
+    (see analysis_service.py, the only caller of this function today).
+
+    Returns (parsed_json, response_id, usage) where usage is
+    {prompt_tokens, completion_tokens, total_tokens} (renamed to match generate_json's shape;
+    the Responses API itself calls these input_tokens/output_tokens/total_tokens).
+    """
+    # json_object mode requires the literal word "json" to appear in the input, not just the
+    # instructions (verified against the live API — omitting this raises a 400).
+    input_text = _cap_user_prompt(instructions, f"{input_text}\n\n(Respond with a JSON object.)")
+    response = _client.responses.create(
+        model=OPENAI_MODEL,
+        temperature=OPENAI_TEMPERATURE,
+        max_output_tokens=max_output_tokens or OPENAI_MAX_TOKENS,
+        instructions=f"{instructions}\n\n{SYSTEM_PROMPT_SUFFIX}",
+        input=input_text,
+        text={"format": {"type": "json_object"}},
+        previous_response_id=previous_response_id,
+        store=True,
+    )
+    usage = response.usage
+    usage_dict = {
+        "prompt_tokens": getattr(usage, "input_tokens", 0) or 0,
+        "completion_tokens": getattr(usage, "output_tokens", 0) or 0,
+        "total_tokens": getattr(usage, "total_tokens", 0) or 0,
+    }
+    try:
+        return json.loads(response.output_text), response.id, usage_dict
+    except (TypeError, json.JSONDecodeError) as e:
+        logger.error("OpenAI returned non-JSON content: %s", response.output_text)
+        raise AIResponseFormatError(f"OpenAI response was not valid JSON: {e}") from e
+
+
 def generate_json_with_image(
     system_prompt: str, user_prompt: str, image_bytes: bytes, mime_type: str
 ) -> tuple[dict, dict]:

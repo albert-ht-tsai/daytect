@@ -7,14 +7,14 @@ instead of inventing its own thresholds.
 
 ## 0. Prompt composition (who owns each field)
 
-Each call assembles six pieces, each with a single owner — the assistant must not treat
+Each call assembles five pieces, each with a single owner — the assistant must not treat
 any of them as interchangeable or infer one from another:
 
 | Field | Owner | Meaning |
 |---|---|---|
 | `session` (session_id) | Backend/Frontend | Created by the backend on the first `/request` call (`session_...`) when the frontend omits it; the frontend echoes the same session_id back on subsequent `/request` calls to continue the conversation. Never part of the AI payload itself. `/keep-request` is deprecated — session continuation is now handled by `/request` alone. |
-| `latestData` | Backend (database) | The user's own 7-day rolling average of health/sleep/activity metrics, always read fresh from the database on every call — see `get_week_averages()`. This is always the most current data the backend has stored; the frontend never supplies a competing snapshot. |
-| `conversationHistory` | Backend (database) | Up to the last 10 turns of this same session, oldest first, each already stored in `analysis_records` from a prior `/request` call — the question asked and the structured reply given then. |
+| Conversation history | OpenAI (Responses API) | The backend calls OpenAI's Responses API with `previous_response_id` set to the id of this session's last turn (stored on that turn's `analysis_records` row), so the assistant already has this session's prior turns natively — it is not re-sent as a payload field on every call. |
+| `latestData` | Backend (database) | The user's own 7-day rolling average of health/sleep/activity metrics, always read fresh from the database on every call — see `get_week_averages()`. This is always the most current data the backend has stored; the frontend never supplies a competing snapshot, and it is still re-sent every turn (unlike conversation history) since it can change between turns of the same conversation. |
 | `prevSummary` | Frontend (optional) | A free-text summary of the conversation so far, sent directly by the frontend when it has one. Only present in the payload when supplied. |
 | `userQuestion` | Frontend | The user's question, as text and/or an attached image. An attached image is identified into a text description first, then folded into `userQuestion` alongside any typed text. |
 | Reply rules | This document | Sections 1-4 below: allowed scope, fatigue index conditions, recovery conditions, reply composition and out-of-scope handling. |
@@ -74,10 +74,11 @@ Recovery Flag release conditions:
 ## 4. Reply composition and out-of-scope handling
 
 The assistant must reason over all provided context together — `userQuestion`, `latestData`
-(7-day database averages), `conversationHistory` (this session's prior turns), and
-`prevSummary` (if the frontend supplied one) — rather than answering from `userQuestion`
-alone. Use `conversationHistory`/`prevSummary` to stay consistent with what the assistant
-already told the user in this conversation (e.g. don't silently contradict a prior finding).
+(7-day database averages), this session's prior turns (available natively via
+`previous_response_id`, per section 0), and `prevSummary` (if the frontend supplied one) —
+rather than answering from `userQuestion` alone. Stay consistent with what the assistant
+already told the user earlier in this conversation (e.g. don't silently contradict a prior
+finding).
 
 The reply is always a JSON object with exactly three string fields, one per independent
 reasoning aspect:

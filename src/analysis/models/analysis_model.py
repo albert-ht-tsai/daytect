@@ -16,6 +16,11 @@ class AnalysisRecord(Base):
     user_question = Column(Text, nullable=True)
     system_answer = Column(Text, nullable=True)
     pic_id = Column(String(64), nullable=True, index=True)
+    # OpenAI Responses API id for this turn's reply, passed back as previous_response_id on the
+    # session's next turn so OpenAI can resume the conversation server-side instead of this
+    # service replaying conversationHistory into the prompt. Null for turns recorded before this
+    # column existed, and for the out-of-scope short-circuit / regenerated-summary error path.
+    openai_response_id = Column(String(128), nullable=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(
         DateTime,

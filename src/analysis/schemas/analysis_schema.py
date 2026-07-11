@@ -38,6 +38,7 @@ class PromptPreviewRequest(BaseModel):
 class PromptPreviewResponse(BaseModel):
     success: bool
     session_id: str
+    previousResponseId: str | None = None
     systemPrompt: str
     payload: dict
     userPrompt: str

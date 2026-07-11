@@ -8,6 +8,8 @@ from src.analysis.api import router as analysis_router
 from src.analysis.models.analysis_model import AnalysisRecord  # noqa: F401
 from src.analysis.models.analysis_pic_model import AnalysisPicRecord  # noqa: F401
 from src.analysis.models.analysis_summary_model import AnalysisSummaryRecord  # noqa: F401
+from src.analysis.models.data_summary_model import DataSummaryRecord  # noqa: F401
+from src.analysis.models.health_summary_model import HealthSummaryRecord  # noqa: F401
 from src.core.database import init_db
 from src.device.api import router as device_router
 from src.device.models.activity_model import ActivityRecord  # noqa: F401
