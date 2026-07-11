@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from src.analysis.models.analysis_model import AnalysisRecord
 from src.analysis.models.analysis_pic_model import AnalysisPicRecord
-from src.analysis.schemas.analysis_schema import LatestSummary
 from src.analysis.services.answer_format import SUMMARY_KEYS, dump_summary, load_stored_summary
 from src.analysis.services.errors import AnalysisError
 from src.core import ai_client, files
@@ -41,15 +40,13 @@ status and health metrics. The input payload is assembled as follows:
 - "userQuestion": the user's question, supplied by the frontend as text and/or derived from an attached
   image (an image is first identified separately, then its description is folded into this text).
 - "latestData": the user's own average health/sleep/activity metrics over the past 7 days, read by the
-  backend from its database.
-- "latestSummary": the user's most recent health snapshot supplied directly by the frontend (e.g. from a
-  just-completed manual ECG detection), which may be more current than latestData.
+  backend from its database (always the freshest data the backend has stored).
 - "conversationHistory": up to the last 10 turns of this same session already stored by the backend,
   oldest first, each with that turn's "userQuestion" and the structured "reply" the assistant gave then.
 - "prevSummary" (optional, only present when the frontend has one): a free-text summary of the
   conversation so far, supplied directly by the frontend.
-Reason over userQuestion together with latestData, latestSummary, conversationHistory, and prevSummary as
-a whole — do not answer from userQuestion in isolation — grounded in the reply rules below.
+Reason over userQuestion together with latestData, conversationHistory, and prevSummary as a whole — do
+not answer from userQuestion in isolation — grounded in the reply rules below.
 
 {_REPLY_RULES}
 
@@ -144,17 +141,6 @@ def _identify_image(
         return f"Unable to identify image: {e}"
 
 
-def _latest_summary_context(latest_summary: LatestSummary | None) -> dict:
-    if latest_summary is None:
-        return {}
-    # ppg is a raw signal, not meaningful to an LLM and expensive in tokens; only its
-    # presence/size is surfaced, the samples themselves are never sent to the AI.
-    data = latest_summary.model_dump(exclude={"ppg"}, exclude_none=True)
-    if latest_summary.ppg:
-        data["ppgSampleCount"] = len(latest_summary.ppg)
-    return data
-
-
 def _resolve_user_question(
     db: Session,
     mac_address: str,
@@ -240,12 +226,29 @@ def _record_analysis(
     db.commit()
 
 
+def _build_ai_payload(
+    db: Session,
+    device: DeviceRecord,
+    mac_address: str,
+    session_id: str,
+    user_question: str,
+    prev_summary: str | None,
+) -> dict:
+    payload = {
+        "userQuestion": user_question,
+        "latestData": get_week_averages(db, device.id),
+        "conversationHistory": _history_payload(db, mac_address, session_id),
+    }
+    if prev_summary and prev_summary.strip():
+        payload["prevSummary"] = prev_summary.strip()
+    return payload
+
+
 def handle_request(
     db: Session,
     mac_address: str,
     session_id: str | None,
     message: str | None,
-    latest_summary: LatestSummary | None,
     prev_summary: str | None,
     image_bytes: bytes | None,
     content_type: str | None,
@@ -263,16 +266,41 @@ def handle_request(
         db, mac_address, session_id, message, image_bytes, content_type, language
     )
 
-    payload = {
-        "userQuestion": user_question,
-        "latestData": get_week_averages(db, device.id),
-        "latestSummary": _latest_summary_context(latest_summary),
-        "conversationHistory": _history_payload(db, mac_address, session_id),
-    }
-    if prev_summary and prev_summary.strip():
-        payload["prevSummary"] = prev_summary.strip()
-
+    payload = _build_ai_payload(db, device, mac_address, session_id, user_question, prev_summary)
     summary = _generate_summary(_REQUEST_SYSTEM_PROMPT, payload, language, max_tokens=HEALTH_CHAT_MAX_TOKENS)
 
     _record_analysis(db, mac_address, session_id, user_question, summary, pic_id=pic_id)
     return summary, session_id
+
+
+def build_prompt_preview(
+    db: Session,
+    mac_address: str,
+    session_id: str | None,
+    message: str,
+    prev_summary: str | None,
+    language: str = "en",
+) -> dict:
+    """Debug-only: assembles the exact system prompt + user payload /request would send to the
+    AI, without calling OpenAI and without writing anything to the database (no AnalysisRecord,
+    no pic upload). Image attachments aren't supported here since identifying one requires an
+    OpenAI vision call, which this endpoint must never make."""
+    mac_address = _require_non_empty(mac_address, "macAddress 不可為空")
+    message = _require_non_empty(message, "message 不可為空")
+
+    device = db.query(DeviceRecord).filter(DeviceRecord.mac_address == mac_address).first()
+    if device is None:
+        raise AnalysisError(404, "找不到對應設備")
+
+    session_id = _resolve_session_id(session_id)
+    user_question = message.strip()
+
+    payload = _build_ai_payload(db, device, mac_address, session_id, user_question, prev_summary)
+    system_prompt = ai_client.with_language(_REQUEST_SYSTEM_PROMPT, language)
+
+    return {
+        "session_id": session_id,
+        "systemPrompt": system_prompt,
+        "payload": payload,
+        "userPrompt": f"Input:\n{json.dumps(payload, default=str)}",
+    }

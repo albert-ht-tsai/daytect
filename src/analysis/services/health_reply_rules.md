@@ -7,14 +7,13 @@ instead of inventing its own thresholds.
 
 ## 0. Prompt composition (who owns each field)
 
-Each call assembles seven pieces, each with a single owner — the assistant must not treat
+Each call assembles six pieces, each with a single owner — the assistant must not treat
 any of them as interchangeable or infer one from another:
 
 | Field | Owner | Meaning |
 |---|---|---|
 | `session` (session_id) | Backend/Frontend | Created by the backend on the first `/request` call (`session_...`) when the frontend omits it; the frontend echoes the same session_id back on subsequent `/request` calls to continue the conversation. Never part of the AI payload itself. `/keep-request` is deprecated — session continuation is now handled by `/request` alone. |
-| `latestData` | Backend (database) | The user's own 7-day rolling average of health/sleep/activity metrics, read fresh from the database on every call — see `get_week_averages()`. |
-| `latestSummary` | Frontend | The user's most recent health snapshot sent directly by the client (e.g. right after a manual ECG detection), which may be newer than anything in the database yet. |
+| `latestData` | Backend (database) | The user's own 7-day rolling average of health/sleep/activity metrics, always read fresh from the database on every call — see `get_week_averages()`. This is always the most current data the backend has stored; the frontend never supplies a competing snapshot. |
 | `conversationHistory` | Backend (database) | Up to the last 10 turns of this same session, oldest first, each already stored in `analysis_records` from a prior `/request` call — the question asked and the structured reply given then. |
 | `prevSummary` | Frontend (optional) | A free-text summary of the conversation so far, sent directly by the frontend when it has one. Only present in the payload when supplied. |
 | `userQuestion` | Frontend | The user's question, as text and/or an attached image. An attached image is identified into a text description first, then folded into `userQuestion` alongside any typed text. |
@@ -75,8 +74,8 @@ Recovery Flag release conditions:
 ## 4. Reply composition and out-of-scope handling
 
 The assistant must reason over all provided context together — `userQuestion`, `latestData`
-(7-day database averages), `latestSummary`, `conversationHistory` (this session's prior turns),
-and `prevSummary` (if the frontend supplied one) — rather than answering from `userQuestion`
+(7-day database averages), `conversationHistory` (this session's prior turns), and
+`prevSummary` (if the frontend supplied one) — rather than answering from `userQuestion`
 alone. Use `conversationHistory`/`prevSummary` to stay consistent with what the assistant
 already told the user in this conversation (e.g. don't silently contradict a prior finding).
 

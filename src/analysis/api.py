@@ -1,12 +1,12 @@
 from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
 
 from src.analysis.schemas.analysis_schema import (
     AnalysisResponse,
     CompactSummaryRequest,
     CompactSummaryResponse,
-    LatestSummary,
+    PromptPreviewRequest,
+    PromptPreviewResponse,
 )
 from src.analysis.services import analysis_service, summary_compaction_service
 from src.analysis.services.errors import AnalysisError
@@ -20,18 +20,6 @@ def _error_response(error: AnalysisError) -> JSONResponse:
         status_code=error.status_code,
         content={"success": False, "message": error.message, "data": None},
     )
-
-
-def _parse_latest_summary(raw: str | None) -> LatestSummary | None:
-    """latest_summary travels as a JSON-encoded string form field (multipart has no native
-    nested-object type); validate it against the LatestSummary schema so a malformed
-    payload fails fast with a 400 instead of silently reaching the AI prompt."""
-    if raw is None or not raw.strip():
-        return None
-    try:
-        return LatestSummary.model_validate_json(raw)
-    except ValidationError as e:
-        raise AnalysisError(400, f"latest_summary 格式錯誤: {e}") from e
 
 
 async def _read_single_image(image: list[UploadFile]) -> tuple[bytes | None, str | None]:
@@ -48,7 +36,6 @@ async def request_endpoint(
     db: SessionDep,
     macAddress: str = Form(...),
     session_id: str | None = Form(None),
-    latest_summary: str | None = Form(None),
     prev_summary: str | None = Form(None),
     message: str | None = Form(None),
     image: list[UploadFile] = File(default_factory=list),
@@ -56,13 +43,11 @@ async def request_endpoint(
 ):
     try:
         image_bytes, content_type = await _read_single_image(image)
-        latest_summary_obj = _parse_latest_summary(latest_summary)
         summary, session_id = analysis_service.handle_request(
             db,
             macAddress,
             session_id,
             message,
-            latest_summary_obj,
             prev_summary,
             image_bytes,
             content_type,
@@ -77,6 +62,20 @@ async def request_endpoint(
         "recoverySummary": summary["recoverySummary"],
         "session_id": session_id,
     }
+
+
+@router.post("/request/preview", response_model=PromptPreviewResponse)
+def request_preview_endpoint(body: PromptPreviewRequest, db: SessionDep):
+    """Debug-only: returns the exact system prompt + user payload /request would send to the
+    AI, without calling OpenAI and without persisting anything. No image support (identifying
+    one requires an OpenAI vision call)."""
+    try:
+        preview = analysis_service.build_prompt_preview(
+            db, body.macAddress, body.session_id, body.message, body.prev_summary, body.language
+        )
+    except AnalysisError as e:
+        return _error_response(e)
+    return {"success": True, **preview}
 
 
 @router.post("/compact-summary", response_model=CompactSummaryResponse)
