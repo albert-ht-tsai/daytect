@@ -139,6 +139,18 @@ def _aggregate_week_sleep_activity(db: Session, device_id: int, dates: list[str]
     }
 
 
+def get_week_averages(db: Session, device_id: int, end_date: date | None = None) -> dict:
+    """Public wrapper around the 7-day health/sleep/activity aggregation, for reuse by
+    other features (e.g. the analysis chat endpoint) that need the same 7-day averages
+    without recomputing an AI-generated baseline."""
+    end_date = end_date or datetime.now(timezone.utc).date()
+    dates = _week_dates(end_date, _LOOKBACK_DAYS)
+    return {
+        **_aggregate_week_health(db, device_id, dates),
+        **_aggregate_week_sleep_activity(db, device_id, dates),
+    }
+
+
 def _person_info_payload(info: PersonInfoRecord) -> dict:
     return {
         "sex": info.sex,

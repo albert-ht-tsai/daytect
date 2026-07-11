@@ -5,9 +5,8 @@ from fastapi.responses import JSONResponse
 
 from src.core.deps import SessionDep
 from src.health.schemas.health_insight_schema import BaseHealthInsightResponse
-from src.health.schemas.health_trending_schema import HealthTrendingResponse
 from src.health.schemas.person_info_schema import PersonInfoUploadRequest
-from src.health.services import health_insight_service, health_trending_service, person_info_service
+from src.health.services import health_insight_service, person_info_service
 from src.health.services.errors import HealthError
 
 router = APIRouter(prefix="/health", tags=["health"])
@@ -32,17 +31,6 @@ def get_base_health_insight_endpoint(
 ):
     try:
         result = health_insight_service.generate_base_health_insight(db, macAddress, language)
-    except HealthError as e:
-        return _error_response(e)
-    return result
-
-
-@router.get("/{macAddress}/trending", response_model=HealthTrendingResponse)
-def get_health_trending_endpoint(
-    macAddress: str, date: str, db: SessionDep, language: Literal["en", "zh"] = "en"
-):
-    try:
-        result = health_trending_service.get_health_trending(db, macAddress, date, language)
     except HealthError as e:
         return _error_response(e)
     return result

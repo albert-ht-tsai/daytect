@@ -73,18 +73,21 @@ def _parse_completion(completion) -> tuple[dict, dict]:
         raise AIResponseFormatError(f"OpenAI response was not valid JSON: {e}") from e
 
 
-def generate_json(system_prompt: str, user_prompt: str) -> tuple[dict, dict]:
+def generate_json(system_prompt: str, user_prompt: str, max_tokens: int | None = None) -> tuple[dict, dict]:
     """Calls OpenAI chat completions with a JSON response format.
 
     Returns (parsed_json, usage) where usage is {prompt_tokens, completion_tokens, total_tokens}.
     Raises the OpenAI SDK's own exceptions on network/timeout/rate-limit/API errors,
     and AIResponseFormatError if the response content isn't valid JSON.
+
+    max_tokens overrides OPENAI_MAX_TOKENS for callers that need a tighter reply-length
+    cap (e.g. a chat-style endpoint), without lowering the shared default for everyone.
     """
     user_prompt = _cap_user_prompt(system_prompt, user_prompt)
     completion = _client.chat.completions.create(
         model=OPENAI_MODEL,
         temperature=OPENAI_TEMPERATURE,
-        max_tokens=OPENAI_MAX_TOKENS,
+        max_tokens=max_tokens or OPENAI_MAX_TOKENS,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": f"{system_prompt}\n\n{SYSTEM_PROMPT_SUFFIX}"},
