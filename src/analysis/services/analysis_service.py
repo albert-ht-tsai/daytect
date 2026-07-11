@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from src.analysis.models.analysis_model import AnalysisRecord
 from src.analysis.models.analysis_pic_model import AnalysisPicRecord
 from src.analysis.schemas.analysis_schema import LatestSummary
-from src.analysis.services.answer_format import as_bullet_list, dump_answer
+from src.analysis.services.answer_format import SUMMARY_KEYS, dump_summary, load_stored_summary
 from src.analysis.services.errors import AnalysisError
 from src.core import ai_client, files
 from src.core.logging import logger
@@ -17,6 +17,11 @@ from src.device.models.device_model import DeviceRecord
 from src.health.services.health_insight_service import get_week_averages
 
 MAX_MESSAGE_LENGTH = 500
+
+# How many of this session's prior turns are folded into "conversationHistory" so the AI stays
+# consistent with what it already told the user (mirrors COMPACT_TURN_COUNT in
+# summary_compaction_service, but read independently since this is a different feature).
+HISTORY_TURN_COUNT = 10
 
 # Caps the AI reply length for the chat endpoint specifically (tighter than the shared
 # OPENAI_MAX_TOKENS default used by other AI features), so replies stay short and cheap.
@@ -39,23 +44,29 @@ status and health metrics. The input payload is assembled as follows:
   backend from its database.
 - "latestSummary": the user's most recent health snapshot supplied directly by the frontend (e.g. from a
   just-completed manual ECG detection), which may be more current than latestData.
-Answer using only userQuestion/latestData/latestSummary, grounded in the reply rules below.
+- "conversationHistory": up to the last 10 turns of this same session already stored by the backend,
+  oldest first, each with that turn's "userQuestion" and the structured "reply" the assistant gave then.
+- "prevSummary" (optional, only present when the frontend has one): a free-text summary of the
+  conversation so far, supplied directly by the frontend.
+Reason over userQuestion together with latestData, latestSummary, conversationHistory, and prevSummary as
+a whole — do not answer from userQuestion in isolation — grounded in the reply rules below.
 
 {_REPLY_RULES}
 
-Return a JSON object: {{"inScope": <boolean>, "message": ["<string>", ...]}}
+Return a JSON object: {{"inScope": <boolean>, "healthSummary": "<string>", "fatigueSummary": "<string>",
+"recoverySummary": "<string>"}}
 Rules:
 - First judge whether userQuestion falls within the allowed reply scope defined above
   (health metrics or fatigue/recovery status only).
-- If out of scope, set "inScope" to false and set "message" to a single-element array
-  containing exactly the fallback sentence given above for the response language.
-- If in scope, set "inScope" to true and set "message" to an array of bullet points, one
-  element per relevant metric/key used to answer (e.g. heart rate, HRV, sleep quality,
-  fatigue level), each formatted as "<key>: <finding>". Do not merge multiple keys into
-  one bullet, and do not add a bullet for a key you did not actually use.
+- If out of scope, set "inScope" to false, set "healthSummary" to exactly the fallback sentence
+  given above for the response language, and set "fatigueSummary" and "recoverySummary" to "".
+- If in scope, set "inScope" to true, and fill in "healthSummary", "fatigueSummary", and
+  "recoverySummary" with your reasoning for each aspect (health metrics; fatigue index status per
+  section 2; recovery stage/flags per section 3). Leave a field as "" if that aspect is not
+  relevant to userQuestion — do not pad an irrelevant field just to fill it in.
 - Do not diagnose disease or recommend medication or medical treatment.
 - Base the answer only on the provided data; if data is insufficient, state so clearly instead of guessing.
-- Keep it to at most 6 bullets.
+- Keep each field concise (a short paragraph, not a wall of text).
 - Use clear, simple, conversational language.
 - Return JSON only."""
 
@@ -97,20 +108,21 @@ def _resolve_session_id(session_id: str | None) -> str:
     return session_id.strip() if session_id and session_id.strip() else _generate_session_id()
 
 
-def _generate_answer(
+def _generate_summary(
     system_prompt: str, payload: dict, language: str, max_tokens: int | None = None
-) -> list[str]:
+) -> dict:
     try:
         prompt = ai_client.with_language(system_prompt, language)
         result, _usage = ai_client.generate_json(
             prompt, f"Input:\n{json.dumps(payload, default=str)}", max_tokens=max_tokens
         )
         if not result.get("inScope", True):
-            return [_OUT_OF_SCOPE_MESSAGE.get(language, _OUT_OF_SCOPE_MESSAGE["en"])]
-        return as_bullet_list(result.get("message"))
+            fallback = _OUT_OF_SCOPE_MESSAGE.get(language, _OUT_OF_SCOPE_MESSAGE["en"])
+            return {"healthSummary": fallback, "fatigueSummary": "", "recoverySummary": ""}
+        return {key: str(result.get(key) or "") for key in SUMMARY_KEYS}
     except Exception as e:  # noqa: BLE001
         logger.exception("AI analysis generation failed")
-        return [f"Unable to generate analysis: {e}"]
+        return {"healthSummary": f"Unable to generate analysis: {e}", "fatigueSummary": "", "recoverySummary": ""}
 
 
 def _identify_image(
@@ -178,12 +190,34 @@ def _resolve_user_question(
     return "\n".join(parts), pic_id
 
 
+def _history_payload(db: Session, mac_address: str, session_id: str) -> list[dict]:
+    """Last HISTORY_TURN_COUNT turns of this session already recorded, oldest first, so the AI
+    can stay consistent with what it already told the user earlier in this conversation. Runs
+    before the current turn is recorded, so it never includes the question being answered now."""
+    records = (
+        db.query(AnalysisRecord)
+        .filter(AnalysisRecord.mac_address == mac_address, AnalysisRecord.session_id == session_id)
+        .order_by(AnalysisRecord.record_datetime.desc())
+        .limit(HISTORY_TURN_COUNT)
+        .all()
+    )
+    records.reverse()
+    return [
+        {
+            "userQuestion": r.user_question,
+            "reply": load_stored_summary(r.system_answer),
+            "recordDatetime": r.record_datetime.isoformat() if r.record_datetime else None,
+        }
+        for r in records
+    ]
+
+
 def _record_analysis(
     db: Session,
     mac_address: str,
     session_id: str,
     user_question: str,
-    system_answer: list[str],
+    system_answer: dict,
     pic_id: str | None = None,
 ) -> None:
     record_datetime = datetime.now(timezone.utc)
@@ -198,9 +232,9 @@ def _record_analysis(
         session_id=session_id,
         record_datetime=record_datetime,
         user_question=user_question,
-        # system_answer is a Text column; the bullet list is JSON-encoded so it round-trips
-        # through load_stored_answer (see answer_format.py) for compact-summary.
-        system_answer=dump_answer(system_answer),
+        # system_answer is a Text column; the structured summary is JSON-encoded so it round-trips
+        # through load_stored_summary (see answer_format.py) for conversationHistory/compact-summary.
+        system_answer=dump_summary(system_answer),
         pic_id=pic_id,
     ))
     db.commit()
@@ -212,10 +246,11 @@ def handle_request(
     session_id: str | None,
     message: str | None,
     latest_summary: LatestSummary | None,
+    prev_summary: str | None,
     image_bytes: bytes | None,
     content_type: str | None,
     language: str = "en",
-) -> tuple[list[str], str]:
+) -> tuple[dict, str]:
     mac_address = _require_non_empty(mac_address, "macAddress 不可為空")
     _require_question(message, has_image=bool(image_bytes))
 
@@ -232,8 +267,12 @@ def handle_request(
         "userQuestion": user_question,
         "latestData": get_week_averages(db, device.id),
         "latestSummary": _latest_summary_context(latest_summary),
+        "conversationHistory": _history_payload(db, mac_address, session_id),
     }
-    answer = _generate_answer(_REQUEST_SYSTEM_PROMPT, payload, language, max_tokens=HEALTH_CHAT_MAX_TOKENS)
+    if prev_summary and prev_summary.strip():
+        payload["prevSummary"] = prev_summary.strip()
 
-    _record_analysis(db, mac_address, session_id, user_question, answer, pic_id=pic_id)
-    return answer, session_id
+    summary = _generate_summary(_REQUEST_SYSTEM_PROMPT, payload, language, max_tokens=HEALTH_CHAT_MAX_TOKENS)
+
+    _record_analysis(db, mac_address, session_id, user_question, summary, pic_id=pic_id)
+    return summary, session_id

@@ -21,7 +21,9 @@ class LatestSummary(BaseModel):
 
 class AnalysisResponse(BaseModel):
     success: bool
-    message: list[str]
+    healthSummary: str
+    fatigueSummary: str
+    recoverySummary: str
     session_id: str
 
 

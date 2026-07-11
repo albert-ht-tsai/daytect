@@ -7,7 +7,7 @@ instead of inventing its own thresholds.
 
 ## 0. Prompt composition (who owns each field)
 
-Each call assembles five pieces, each with a single owner — the assistant must not treat
+Each call assembles seven pieces, each with a single owner — the assistant must not treat
 any of them as interchangeable or infer one from another:
 
 | Field | Owner | Meaning |
@@ -15,8 +15,10 @@ any of them as interchangeable or infer one from another:
 | `session` (session_id) | Backend/Frontend | Created by the backend on the first `/request` call (`session_...`) when the frontend omits it; the frontend echoes the same session_id back on subsequent `/request` calls to continue the conversation. Never part of the AI payload itself. `/keep-request` is deprecated — session continuation is now handled by `/request` alone. |
 | `latestData` | Backend (database) | The user's own 7-day rolling average of health/sleep/activity metrics, read fresh from the database on every call — see `get_week_averages()`. |
 | `latestSummary` | Frontend | The user's most recent health snapshot sent directly by the client (e.g. right after a manual ECG detection), which may be newer than anything in the database yet. |
+| `conversationHistory` | Backend (database) | Up to the last 10 turns of this same session, oldest first, each already stored in `analysis_records` from a prior `/request` call — the question asked and the structured reply given then. |
+| `prevSummary` | Frontend (optional) | A free-text summary of the conversation so far, sent directly by the frontend when it has one. Only present in the payload when supplied. |
 | `userQuestion` | Frontend | The user's question, as text and/or an attached image. An attached image is identified into a text description first, then folded into `userQuestion` alongside any typed text. |
-| Reply rules | This document | Sections 1-4 below: allowed scope, fatigue index conditions, recovery conditions, out-of-scope handling. |
+| Reply rules | This document | Sections 1-4 below: allowed scope, fatigue index conditions, recovery conditions, reply composition and out-of-scope handling. |
 
 ## 1. Allowed reply scope
 
@@ -70,16 +72,32 @@ Recovery Flag release conditions:
 | Activity Flag | MET≥90%基線並維持≥2天 |
 | SpO2 Flag | SpO2恢復至基線（或≥基線-1個百分點）並維持≥2天 |
 
-## 4. Reply format and out-of-scope handling
+## 4. Reply composition and out-of-scope handling
 
-`"message"` is always a JSON array of strings (bullet points), never a single paragraph.
+The assistant must reason over all provided context together — `userQuestion`, `latestData`
+(7-day database averages), `latestSummary`, `conversationHistory` (this session's prior turns),
+and `prevSummary` (if the frontend supplied one) — rather than answering from `userQuestion`
+alone. Use `conversationHistory`/`prevSummary` to stay consistent with what the assistant
+already told the user in this conversation (e.g. don't silently contradict a prior finding).
 
-- **In scope**: one array element per relevant metric/key actually used to answer (e.g.
-  `["心率: ...", "HRV: ...", "疲勞等級: ..."]`), at most 6 elements.
+The reply is always a JSON object with exactly three string fields, one per independent
+reasoning aspect:
+
+- `"healthSummary"` — reasoning about health metrics (heart rate, blood pressure, blood
+  oxygen, body temperature, HRV, respiratory rate, stress, sleep, activity — section 1.1).
+- `"fatigueSummary"` — reasoning about fatigue status, grounded in the Fatigue Index
+  conditions in section 2.
+- `"recoverySummary"` — reasoning about recovery status, grounded in the Recovery conditions
+  in section 3.
+
+Only fill in the field(s) actually relevant to `userQuestion`; leave a field as `""` when that
+aspect isn't part of the question and nothing in the provided data compels mentioning it. Do
+not pad an irrelevant field just to fill it in.
+
 - **Out of scope** — the user's question does not fall under section 1:
   - Do not attempt to answer it, and do not use any data to construct a partial answer.
   - Set `"inScope": false`.
-  - Set `"message"` to a single-element array containing exactly the fallback sentence
-    for the response language:
-    - en: `["The provided data cannot be analyzed for this question."]`
-    - zh: `["提供的資料無法分析此問題。"]`
+  - Set `"healthSummary"` to exactly the fallback sentence for the response language, and set
+    `"fatigueSummary"` / `"recoverySummary"` to `""`:
+    - en: `"The provided data cannot be analyzed for this question."`
+    - zh: `"提供的資料無法分析此問題。"`

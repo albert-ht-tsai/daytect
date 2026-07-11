@@ -49,6 +49,7 @@ async def request_endpoint(
     macAddress: str = Form(...),
     session_id: str | None = Form(None),
     latest_summary: str | None = Form(None),
+    prev_summary: str | None = Form(None),
     message: str | None = Form(None),
     image: list[UploadFile] = File(default_factory=list),
     language: str = Form("en"),
@@ -56,12 +57,26 @@ async def request_endpoint(
     try:
         image_bytes, content_type = await _read_single_image(image)
         latest_summary_obj = _parse_latest_summary(latest_summary)
-        answer, session_id = analysis_service.handle_request(
-            db, macAddress, session_id, message, latest_summary_obj, image_bytes, content_type, language
+        summary, session_id = analysis_service.handle_request(
+            db,
+            macAddress,
+            session_id,
+            message,
+            latest_summary_obj,
+            prev_summary,
+            image_bytes,
+            content_type,
+            language,
         )
     except AnalysisError as e:
         return _error_response(e)
-    return {"success": True, "message": answer, "session_id": session_id}
+    return {
+        "success": True,
+        "healthSummary": summary["healthSummary"],
+        "fatigueSummary": summary["fatigueSummary"],
+        "recoverySummary": summary["recoverySummary"],
+        "session_id": session_id,
+    }
 
 
 @router.post("/compact-summary", response_model=CompactSummaryResponse)

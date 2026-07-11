@@ -4,7 +4,12 @@ from sqlalchemy.orm import Session
 
 from src.analysis.models.analysis_model import AnalysisRecord
 from src.analysis.models.analysis_summary_model import AnalysisSummaryRecord
-from src.analysis.services.answer_format import as_bullet_list, dump_answer, load_stored_answer
+from src.analysis.services.answer_format import (
+    as_bullet_list,
+    dump_answer,
+    load_stored_answer,
+    load_stored_summary,
+)
 from src.analysis.services.errors import AnalysisError
 from src.core import ai_client
 from src.core.logging import logger
@@ -17,7 +22,9 @@ key-point digest for future reference. You will receive:
 - "previousSummary" (optional): the key-point digest already compacted from earlier turns of this same
   conversation.
 - "turns": up to the last 10 conversation turns not yet covered by previousSummary, oldest first, each with
-  the user's question ("userQuestion") and the assistant's bullet-point reply from that turn ("reply").
+  the user's question ("userQuestion") and the assistant's structured reply from that turn ("reply"), an
+  object with "healthSummary"/"fatigueSummary"/"recoverySummary" string keys (a key may be empty if that
+  aspect wasn't relevant to that turn's question).
 
 Merge previousSummary (if present) with turns into a single, updated, deduplicated set of key points
 capturing the user's recurring questions/concerns and the most important, still-relevant findings about
@@ -36,7 +43,7 @@ Rules:
 def _turn_payload(record: AnalysisRecord) -> dict:
     return {
         "userQuestion": record.user_question,
-        "reply": load_stored_answer(record.system_answer),
+        "reply": load_stored_summary(record.system_answer),
         "recordDatetime": record.record_datetime.isoformat() if record.record_datetime else None,
     }
 
