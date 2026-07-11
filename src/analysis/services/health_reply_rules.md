@@ -1,9 +1,9 @@
 # Health / Fatigue Reply Rules
 
-This document is loaded verbatim into the system prompt of `/v1/analysis/request` and
-`/v1/analysis/keep-request`. It defines (1) the only topics the assistant is allowed to
-answer, and (2) the fatigue/recovery algorithm the assistant must use to ground any
-fatigue-related answer, instead of inventing its own thresholds.
+This document is loaded verbatim into the system prompt of `/v1/analysis/request`. It
+defines (1) the only topics the assistant is allowed to answer, and (2) the
+fatigue/recovery algorithm the assistant must use to ground any fatigue-related answer,
+instead of inventing its own thresholds.
 
 ## 0. Prompt composition (who owns each field)
 
@@ -12,7 +12,7 @@ any of them as interchangeable or infer one from another:
 
 | Field | Owner | Meaning |
 |---|---|---|
-| `session` (session_id) | Backend | Created by the backend on the first `/request` call (`session_...`); the frontend echoes it back on `/keep-request` to continue the same conversation. Never part of the AI payload itself. |
+| `session` (session_id) | Backend/Frontend | Created by the backend on the first `/request` call (`session_...`) when the frontend omits it; the frontend echoes the same session_id back on subsequent `/request` calls to continue the conversation. Never part of the AI payload itself. `/keep-request` is deprecated — session continuation is now handled by `/request` alone. |
 | `latestData` | Backend (database) | The user's own 7-day rolling average of health/sleep/activity metrics, read fresh from the database on every call — see `get_week_averages()`. |
 | `latestSummary` | Frontend | The user's most recent health snapshot sent directly by the client (e.g. right after a manual ECG detection), which may be newer than anything in the database yet. |
 | `userQuestion` | Frontend | The user's question, as text and/or an attached image. An attached image is identified into a text description first, then folded into `userQuestion` alongside any typed text. |

@@ -90,6 +90,13 @@ def _generate_session_id() -> str:
     return "session_" + uuid.uuid4().hex
 
 
+def _resolve_session_id(session_id: str | None) -> str:
+    """Continues the frontend-echoed session_id when present so a conversation's turns
+    stay grouped under one id; mints a fresh one only when the frontend has none yet
+    (i.e. this is the first turn)."""
+    return session_id.strip() if session_id and session_id.strip() else _generate_session_id()
+
+
 def _generate_answer(
     system_prompt: str, payload: dict, language: str, max_tokens: int | None = None
 ) -> list[str]:
@@ -202,6 +209,7 @@ def _record_analysis(
 def handle_request(
     db: Session,
     mac_address: str,
+    session_id: str | None,
     message: str | None,
     latest_summary: LatestSummary | None,
     image_bytes: bytes | None,
@@ -215,7 +223,7 @@ def handle_request(
     if device is None:
         raise AnalysisError(404, "找不到對應設備")
 
-    session_id = _generate_session_id()
+    session_id = _resolve_session_id(session_id)
     user_question, pic_id = _resolve_user_question(
         db, mac_address, session_id, message, image_bytes, content_type, language
     )

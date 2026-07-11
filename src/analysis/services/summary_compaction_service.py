@@ -13,19 +13,22 @@ COMPACT_TURN_COUNT = 10
 COMPACT_MAX_TOKENS = 400
 
 _COMPACT_SYSTEM_PROMPT = """You are compacting a health/fatigue chat conversation history into a short
-key-point digest for future reference. You will receive up to the last 10 turns of the conversation, oldest
-first, each with the user's question ("userQuestion") and the assistant's bullet-point reply from that turn
-("reply").
+key-point digest for future reference. You will receive:
+- "previousSummary" (optional): the key-point digest already compacted from earlier turns of this same
+  conversation.
+- "turns": up to the last 10 conversation turns not yet covered by previousSummary, oldest first, each with
+  the user's question ("userQuestion") and the assistant's bullet-point reply from that turn ("reply").
 
-Combine them into a single, deduplicated set of key points capturing the user's recurring questions/concerns
-and the most important, still-relevant findings about their health metrics and fatigue status. If a later
-turn updates or contradicts an earlier one, keep only the later, more current point.
+Merge previousSummary (if present) with turns into a single, updated, deduplicated set of key points
+capturing the user's recurring questions/concerns and the most important, still-relevant findings about
+their health metrics and fatigue status. If a turn updates or contradicts a point in previousSummary or an
+earlier turn, keep only the later, more current point.
 
 Return a JSON object: {"message": ["<string>", ...]}
 Rules:
 - At most 8 bullet points, each concise and self-contained (understandable without the original turns).
 - Do not diagnose disease or recommend medication or medical treatment.
-- Do not invent findings not present in the source turns.
+- Do not invent findings not present in previousSummary or the source turns.
 - Use clear, simple language.
 - Return JSON only."""
 
@@ -38,11 +41,16 @@ def _turn_payload(record: AnalysisRecord) -> dict:
     }
 
 
-def _generate_compact_summary(turns: list[dict], language: str) -> list[str]:
+def _generate_compact_summary(
+    turns: list[dict], language: str, previous_summary: list[str] | None = None
+) -> list[str]:
     prompt = ai_client.with_language(_COMPACT_SYSTEM_PROMPT, language)
+    payload: dict = {"turns": turns}
+    if previous_summary:
+        payload["previousSummary"] = previous_summary
     try:
         result, _usage = ai_client.generate_json(
-            prompt, f"Input:\n{json.dumps({'turns': turns}, default=str)}", max_tokens=COMPACT_MAX_TOKENS
+            prompt, f"Input:\n{json.dumps(payload, default=str)}", max_tokens=COMPACT_MAX_TOKENS
         )
         return as_bullet_list(result.get("message"))
     except Exception as e:  # noqa: BLE001
@@ -58,20 +66,6 @@ def compact_summary(
     if not session_id or not session_id.strip():
         raise AnalysisError(400, "session_id 不可為空")
 
-    records = (
-        db.query(AnalysisRecord)
-        .filter(AnalysisRecord.mac_address == mac_address, AnalysisRecord.session_id == session_id)
-        .order_by(AnalysisRecord.record_datetime.desc())
-        .limit(COMPACT_TURN_COUNT)
-        .all()
-    )
-    if not records:
-        raise AnalysisError(404, "找不到對應的對話紀錄")
-
-    records.reverse()  # oldest -> newest, so the AI reads the conversation in order
-    turns = [_turn_payload(r) for r in records]
-    summary = _generate_compact_summary(turns, language)
-
     existing = (
         db.query(AnalysisSummaryRecord)
         .filter(
@@ -80,13 +74,36 @@ def compact_summary(
         )
         .first()
     )
+
+    # Only the turns since the last compaction need to be summarized; previousSummary
+    # already carries everything earlier, so the digest stays continuous across calls
+    # instead of losing turns that fell off this window.
+    query = db.query(AnalysisRecord).filter(
+        AnalysisRecord.mac_address == mac_address, AnalysisRecord.session_id == session_id
+    )
+    if existing is not None:
+        query = query.filter(AnalysisRecord.record_datetime > existing.end_record_datetime)
+    records = query.order_by(AnalysisRecord.record_datetime.desc()).limit(COMPACT_TURN_COUNT).all()
+
+    if not records:
+        if existing is not None:
+            return load_stored_answer(existing.summary), existing.source_count
+        raise AnalysisError(404, "找不到對應的對話紀錄")
+
+    records.reverse()  # oldest -> newest, so the AI reads the conversation in order
+    turns = [_turn_payload(r) for r in records]
+    previous_summary = load_stored_answer(existing.summary) if existing is not None else None
+    summary = _generate_compact_summary(turns, language, previous_summary)
+
     if existing is None:
-        existing = AnalysisSummaryRecord(mac_address=mac_address, session_id=session_id)
+        existing = AnalysisSummaryRecord(
+            mac_address=mac_address, session_id=session_id, source_count=0
+        )
         db.add(existing)
+        existing.start_record_datetime = records[0].record_datetime
 
     existing.summary = dump_answer(summary)
-    existing.source_count = len(records)
-    existing.start_record_datetime = records[0].record_datetime
+    existing.source_count += len(records)
     existing.end_record_datetime = records[-1].record_datetime
     db.commit()
     db.refresh(existing)

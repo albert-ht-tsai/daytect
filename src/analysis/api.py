@@ -47,6 +47,7 @@ async def _read_single_image(image: list[UploadFile]) -> tuple[bytes | None, str
 async def request_endpoint(
     db: SessionDep,
     macAddress: str = Form(...),
+    session_id: str | None = Form(None),
     latest_summary: str | None = Form(None),
     message: str | None = Form(None),
     image: list[UploadFile] = File(default_factory=list),
@@ -56,7 +57,7 @@ async def request_endpoint(
         image_bytes, content_type = await _read_single_image(image)
         latest_summary_obj = _parse_latest_summary(latest_summary)
         answer, session_id = analysis_service.handle_request(
-            db, macAddress, message, latest_summary_obj, image_bytes, content_type, language
+            db, macAddress, session_id, message, latest_summary_obj, image_bytes, content_type, language
         )
     except AnalysisError as e:
         return _error_response(e)
