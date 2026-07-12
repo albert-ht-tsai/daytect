@@ -16,7 +16,7 @@ from src.device.models.health_model import HealthRecord
 from src.device.models.sleep_model import SleepRecord
 
 LOOKBACK_DAYS = 7
-PROMPT_VERSION = "data_summary_v2"
+PROMPT_VERSION = "data_summary_v3"
 
 # A full report has up to 16 metrics (name/value/unit/status/note each) plus a 主要發現 highlights
 # block, an overall summary, and disclaimer, all in Traditional Chinese — this routinely exceeds
@@ -434,6 +434,7 @@ def get_or_generate_summary(
         and existing is not None
         and existing.source_updated_at is not None
         and existing.source_updated_at >= source_updated_at
+        and existing.prompt_version == PROMPT_VERSION
     ):
         return existing, False
 
