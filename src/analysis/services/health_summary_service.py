@@ -8,7 +8,7 @@ from src.analysis.services.errors import AnalysisError
 from src.core import ai_client, files
 from src.core.logging import logger
 
-PROMPT_VERSION = "health_summary_v1"
+PROMPT_VERSION = "health_summary_v2"
 
 _PROMPT_RULES = (Path(__file__).parent / "health_summary_prompt.md").read_text(encoding="utf-8")
 
@@ -16,8 +16,9 @@ _SYSTEM_PROMPT = f"""{_PROMPT_RULES}
 
 Return a single JSON object containing the health summary described above (title, the user's
 question, a direct answer, key findings drawn only from the prior turn's data, possible
-relationships, recommendations, limitations, and a disclaimer). The exact field names are up to
-you; the content and rules above are not."""
+relationships, recommendations, clearly-labeled simulated/inferred quantitative estimates for
+what-if scenarios per section 3.7 where applicable, limitations, and a disclaimer). The exact
+field names are up to you; the content and rules above are not."""
 
 
 def _validate(mac_address: str | None, user_input: str | None, previous_response_id: str | None) -> tuple[str, str, str]:
