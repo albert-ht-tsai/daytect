@@ -58,6 +58,14 @@ _RESPIRATORY_RANGE = (12, 20)  # general adult resting breaths/min
 _HRV_NORMAL_MIN = 20
 # General sleep-hygiene convention: 0-2 nighttime awakenings is typical for adults.
 _AWAKE_COUNT_NORMAL_MAX = 2
+# General sleep-hygiene bedtime/wake-up windows for adults. Bedtime wraps past midnight, so
+# status comparisons must treat this as a circular window, not a plain low/high range.
+_SLEEP_START_NORMAL_RANGE = ("22:00", "01:00")
+_WAKE_UP_NORMAL_RANGE = ("06:00", "09:00")
+# General sleep-stage-proportion convention for adults: deep sleep ~13-23% and light sleep
+# ~50-60% of a typical 7-9h (420-540 min) night, expressed here as absolute minutes.
+_DEEP_SLEEP_RANGE_MINUTES = (60, 110)
+_LIGHT_SLEEP_RANGE_MINUTES = (180, 300)
 
 # metric -> (json key inside HealthRecord.data, sub-key) used both to average and to detect
 # whether a given day's row has usable data for that metric.
@@ -164,13 +172,26 @@ def _blood_pressure_status(bp: dict) -> str:
     return "normal"
 
 
-def _presence_status(value) -> str:
-    """For metrics with no defensible general normal range (clock times, absolute light/deep
-    sleep minutes): report whether data exists at all rather than inventing a threshold, per
-    data_summary_prompt.md #9. Distinct from "unknown" (HRV-style, where a range was considered
-    and deliberately rejected) only in intent — same status string, since that's the vocabulary
-    the prompt already defines (data_summary_prompt.md #7)."""
-    return "insufficient_data" if value is None else "unknown"
+def _clock_minutes(hhmm: str) -> int:
+    hour, minute = hhmm.split(":")
+    return int(hour) * 60 + int(minute)
+
+
+def _status_from_clock_range(value: str | None, low: str, high: str) -> str:
+    """Like _status_from_range but for "HH:MM" clock times on a 24h circle (e.g. a 22:00-01:00
+    bedtime window wraps past midnight, so a plain low/high comparison would be wrong)."""
+    if value is None:
+        return "insufficient_data"
+    low_m, high_m = _clock_minutes(low), _clock_minutes(high)
+    span = (high_m - low_m) % 1440
+    offset = (_clock_minutes(value) - low_m) % 1440
+    if offset <= span:
+        return "normal"
+    # Outside the window: report "high" or "low" based on whichever boundary is closer going the
+    # short way around the clock (e.g. just after the window end vs. just before its start).
+    distance_past_high = offset - span
+    distance_before_low = 1440 - offset
+    return "high" if distance_past_high <= distance_before_low else "low"
 
 
 def _compute_metric_status(sleep_data: dict, health_data: dict) -> dict:
@@ -188,8 +209,10 @@ def _compute_metric_status(sleep_data: dict, health_data: dict) -> dict:
         "sleep_duration_minutes": _status_from_range(
             sleep_data["sleep_duration_minutes"], *_SLEEP_DURATION_RANGE_MINUTES
         ),
-        "sleep_start_time": _presence_status(sleep_data["sleep_start_time"]),
-        "wake_up_time": _presence_status(sleep_data["wake_up_time"]),
+        "sleep_start_time": _status_from_clock_range(
+            sleep_data["sleep_start_time"], *_SLEEP_START_NORMAL_RANGE
+        ),
+        "wake_up_time": _status_from_clock_range(sleep_data["wake_up_time"], *_WAKE_UP_NORMAL_RANGE),
         "awake_count": (
             "insufficient_data" if awake_count is None
             else "normal" if awake_count <= _AWAKE_COUNT_NORMAL_MAX else "high"
@@ -197,8 +220,12 @@ def _compute_metric_status(sleep_data: dict, health_data: dict) -> dict:
         # This system's sleep data model never tracks a separate REM segment (see
         # _aggregate_sleep), so this is always null and always reported as insufficient_data.
         "rem_duration_minutes": "insufficient_data",
-        "light_sleep_duration_minutes": _presence_status(sleep_data["light_sleep_duration_minutes"]),
-        "deep_sleep_duration_minutes": _presence_status(sleep_data["deep_sleep_duration_minutes"]),
+        "light_sleep_duration_minutes": _status_from_range(
+            sleep_data["light_sleep_duration_minutes"], *_LIGHT_SLEEP_RANGE_MINUTES
+        ),
+        "deep_sleep_duration_minutes": _status_from_range(
+            sleep_data["deep_sleep_duration_minutes"], *_DEEP_SLEEP_RANGE_MINUTES
+        ),
         "heart_rate_bpm": _status_from_range(health_data["heart_rate_bpm"], *_HEART_RATE_RANGE),
         "blood_pressure": _blood_pressure_status(health_data["blood_pressure"]),
         "blood_oxygen_percent": (
