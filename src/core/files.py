@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, UploadFile, status
 
@@ -33,6 +34,10 @@ def save_avatar(file: UploadFile, prefix: str, entity_id: int) -> str:
         out_file.write(file.file.read())
 
     return f"{BASE_URL}/avatar/{filename}"
+
+
+def generate_pic_id() -> str:
+    return "analysis_pic_" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")[:-3]
 
 
 def save_analysis_image(image_bytes: bytes, content_type: str | None, pic_id: str) -> str | None:

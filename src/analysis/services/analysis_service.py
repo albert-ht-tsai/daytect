@@ -86,10 +86,6 @@ def _require_question(message: str | None, has_image: bool) -> None:
         raise AnalysisError(400, "message 不可超過 500 字")
 
 
-def _generate_pic_id() -> str:
-    return "analysis_pic_" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")[:-3]
-
-
 def _generate_session_id() -> str:
     return "session_" + uuid.uuid4().hex
 
@@ -163,7 +159,7 @@ def _resolve_user_question(
     pic_id = None
     if image_bytes:
         pic_message = _identify_image(image_bytes, content_type, language)
-        pic_id = _generate_pic_id()
+        pic_id = files.generate_pic_id()
         image_path = files.save_analysis_image(image_bytes, content_type, pic_id)
         db.add(AnalysisPicRecord(
             mac_address=mac_address,

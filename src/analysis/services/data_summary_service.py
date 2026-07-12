@@ -5,9 +5,10 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from src.analysis.models.analysis_pic_model import AnalysisPicRecord
 from src.analysis.models.data_summary_model import DataSummaryRecord
 from src.analysis.services.errors import AnalysisError
-from src.core import ai_client
+from src.core import ai_client, files
 from src.core.logging import logger
 from src.device.models.device_model import DeviceRecord
 from src.device.models.health_model import HealthRecord
@@ -240,6 +241,7 @@ def _build_ai_payload(
     health_data: dict,
     metric_status: dict,
     data_quality: dict,
+    has_image: bool,
 ) -> dict:
     return {
         "mac_address": mac_address,
@@ -250,18 +252,27 @@ def _build_ai_payload(
         "health_data": health_data,
         "metric_status": metric_status,
         "data_quality": data_quality,
+        "has_image": has_image,
     }
 
 
-def _generate_report(payload: dict) -> tuple[dict, str]:
+def _generate_report(
+    payload: dict, image_bytes: bytes | None, content_type: str | None
+) -> tuple[dict, str]:
     """Uses the Responses API (not generate_json's Chat Completions call) so the returned
     response id can be saved and later passed as previousResponseId to /health_summary — that
     endpoint relies on OpenAI already having this call's macAddress + 7-day data in context
-    server-side, rather than re-querying the database itself."""
+    server-side, rather than re-querying the database itself.
+
+    When an image is attached, it rides along in this same call (see
+    ai_client.generate_json_response) so it also becomes part of that stored context."""
     try:
         prompt = ai_client.with_language(_SYSTEM_PROMPT, "zh")
         result, response_id, _usage = ai_client.generate_json_response(
-            prompt, f"Input:\n{json.dumps(payload, default=str)}"
+            prompt,
+            f"Input:\n{json.dumps(payload, default=str)}",
+            image_bytes=image_bytes,
+            mime_type=content_type,
         )
         return result, response_id
     except Exception as e:  # noqa: BLE001
@@ -269,14 +280,31 @@ def _generate_report(payload: dict) -> tuple[dict, str]:
         raise AnalysisError(502, "數據摘要生成失敗", code="SUMMARY_GENERATION_FAILED") from e
 
 
+def _save_uploaded_image(db: Session, mac_address: str, image_bytes: bytes, content_type: str | None) -> str:
+    pic_id = files.generate_pic_id()
+    image_path = files.save_analysis_image(image_bytes, content_type, pic_id)
+    db.add(AnalysisPicRecord(mac_address=mac_address, pic_id=pic_id, image_path=image_path))
+    db.commit()
+    return pic_id
+
+
 def _source_updated_at(sleep_rows: list[SleepRecord], health_rows: list[HealthRecord]) -> datetime:
     timestamps = [r.updated_at for r in sleep_rows] + [r.updated_at for r in health_rows]
     return max(timestamps)
 
 
-def get_or_generate_summary(db: Session, mac_address: str, date_str: str) -> tuple[DataSummaryRecord, bool]:
+def get_or_generate_summary(
+    db: Session,
+    mac_address: str,
+    date_str: str,
+    image_bytes: bytes | None = None,
+    content_type: str | None = None,
+) -> tuple[DataSummaryRecord, bool]:
     """Returns (record, generated) where generated is False when a still-fresh saved summary
-    was returned as-is, and True when a new one was just computed and (re)saved."""
+    was returned as-is, and True when a new one was just computed and (re)saved.
+
+    An attached image always forces regeneration (bypassing the cache below), since it's new
+    input the caller wants reflected in this report."""
     mac_address = _validate_mac_address(mac_address)
     end_date = _validate_date(date_str)
 
@@ -319,13 +347,21 @@ def get_or_generate_summary(db: Session, mac_address: str, date_str: str) -> tup
         DataSummaryRecord.report_date == date_str,
     ).first()
 
-    if existing is not None and existing.source_updated_at is not None and existing.source_updated_at >= source_updated_at:
+    if (
+        image_bytes is None
+        and existing is not None
+        and existing.source_updated_at is not None
+        and existing.source_updated_at >= source_updated_at
+    ):
         return existing, False
 
     payload = _build_ai_payload(
-        mac_address, date_str, start_time, end_time, sleep_data, health_data, metric_status, data_quality
+        mac_address, date_str, start_time, end_time, sleep_data, health_data, metric_status, data_quality,
+        has_image=bool(image_bytes),
     )
-    ai_response, response_id = _generate_report(payload)
+    ai_response, response_id = _generate_report(payload, image_bytes, content_type)
+
+    pic_id = _save_uploaded_image(db, mac_address, image_bytes, content_type) if image_bytes else None
 
     if existing is None:
         existing = DataSummaryRecord(mac_address=mac_address, report_date=date_str)
@@ -338,6 +374,7 @@ def get_or_generate_summary(db: Session, mac_address: str, date_str: str) -> tup
     existing.metric_status = metric_status
     existing.ai_response = ai_response
     existing.response_id = response_id
+    existing.pic_id = pic_id
     existing.prompt_version = PROMPT_VERSION
     existing.source_updated_at = source_updated_at
     db.commit()

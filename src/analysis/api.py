@@ -9,7 +9,7 @@ from src.analysis.schemas.analysis_schema import (
     PromptPreviewResponse,
 )
 from src.analysis.schemas.data_summary_schema import DataSummaryResponse
-from src.analysis.schemas.health_summary_schema import HealthSummaryRequest, HealthSummaryResponse
+from src.analysis.schemas.health_summary_schema import HealthSummaryResponse
 from src.analysis.services import analysis_service, data_summary_service, health_summary_service, summary_compaction_service
 from src.analysis.services.errors import AnalysisError
 from src.core.deps import SessionDep
@@ -120,10 +120,18 @@ def get_compact_summary_endpoint(macAddress: str, session_id: str, db: SessionDe
     }
 
 
-@router.get("/data_summary", response_model=DataSummaryResponse)
-def data_summary_endpoint(db: SessionDep, macAddress: str | None = None, date: str | None = None):
+@router.post("/data_summary", response_model=DataSummaryResponse)
+async def data_summary_endpoint(
+    db: SessionDep,
+    macAddress: str | None = Form(None),
+    date: str | None = Form(None),
+    image: list[UploadFile] = File(default_factory=list),
+):
     try:
-        record, generated = data_summary_service.get_or_generate_summary(db, macAddress, date)
+        image_bytes, content_type = await _read_single_image(image)
+        record, generated = data_summary_service.get_or_generate_summary(
+            db, macAddress, date, image_bytes, content_type
+        )
     except AnalysisError as e:
         return _coded_error_response(e)
     return {
@@ -142,10 +150,17 @@ def data_summary_endpoint(db: SessionDep, macAddress: str | None = None, date: s
 
 
 @router.post("/health_summary", response_model=HealthSummaryResponse)
-def health_summary_endpoint(body: HealthSummaryRequest, db: SessionDep):
+async def health_summary_endpoint(
+    db: SessionDep,
+    macAddress: str = Form(...),
+    userInput: str = Form(...),
+    previousResponseId: str = Form(...),
+    image: list[UploadFile] = File(default_factory=list),
+):
     try:
+        image_bytes, content_type = await _read_single_image(image)
         record = health_summary_service.generate_health_summary(
-            db, body.macAddress, body.userInput, body.previousResponseId
+            db, macAddress, userInput, previousResponseId, image_bytes, content_type
         )
     except AnalysisError as e:
         return _coded_error_response(e)

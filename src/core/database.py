@@ -59,6 +59,8 @@ def _run_migrations() -> None:
         "ALTER TABLE analysis_records ADD COLUMN IF NOT EXISTS session_id VARCHAR(64)",
         "ALTER TABLE analysis_records ADD COLUMN IF NOT EXISTS openai_response_id VARCHAR(128)",
         "ALTER TABLE data_summary_records ADD COLUMN IF NOT EXISTS response_id VARCHAR(128)",
+        "ALTER TABLE data_summary_records ADD COLUMN IF NOT EXISTS pic_id VARCHAR(64)",
+        "ALTER TABLE health_summary_records ADD COLUMN IF NOT EXISTS pic_id VARCHAR(64)",
         "ALTER TABLE analysis_pic_records ADD COLUMN IF NOT EXISTS session_id VARCHAR(64)",
         "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS sleep_quality FLOAT",
         "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS sleep_quality_label VARCHAR(10)",

@@ -24,6 +24,9 @@ class HealthSummaryRecord(Base):
     # This turn's own OpenAI Responses API id, returned to the frontend so a further follow-up
     # question can chain from it instead of the original data-summary response.
     health_summary_response_id = Column(String(128), nullable=True, index=True)
+    # Id of the AnalysisPicRecord audit row for an image attached to this turn, if any
+    # (see analysis_pic_model.py). Null when no image was uploaded.
+    pic_id = Column(String(64), nullable=True, index=True)
     health_summary = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(

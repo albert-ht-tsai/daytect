@@ -32,6 +32,9 @@ class DataSummaryRecord(Base):
     # on OpenAI already having this macAddress + 7-day data in context server-side rather than
     # re-querying the database itself.
     response_id = Column(String(128), nullable=True, index=True)
+    # Id of the AnalysisPicRecord audit row for an image attached to this report's generation
+    # call, if any (see analysis_pic_model.py). Null when no image was uploaded.
+    pic_id = Column(String(64), nullable=True, index=True)
     prompt_version = Column(String(32), nullable=False)
     # Latest updated_at among the SleepRecord/HealthRecord rows this summary was computed from;
     # compared against fresh source rows on the next request to decide whether the saved summary

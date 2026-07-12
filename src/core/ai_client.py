@@ -102,11 +102,18 @@ def generate_json_response(
     input_text: str,
     previous_response_id: str | None = None,
     max_output_tokens: int | None = None,
+    image_bytes: bytes | None = None,
+    mime_type: str | None = None,
 ) -> tuple[dict, str, dict]:
     """Like generate_json, but uses the Responses API so a multi-turn caller can pass
     previous_response_id to resume a conversation OpenAI already has stored server-side,
     instead of replaying the full conversation history into the prompt on every call
     (see analysis_service.py, the only caller of this function today).
+
+    When image_bytes is given, it's attached as an input_image content block alongside
+    input_text on this turn, so it becomes part of the stored conversation the same way
+    previous_response_id resumes it — unlike generate_json_with_image, which is a one-shot
+    Chat Completions call with no memory of prior turns.
 
     Returns (parsed_json, response_id, usage) where usage is
     {prompt_tokens, completion_tokens, total_tokens} (renamed to match generate_json's shape;
@@ -115,12 +122,28 @@ def generate_json_response(
     # json_object mode requires the literal word "json" to appear in the input, not just the
     # instructions (verified against the live API — omitting this raises a 400).
     input_text = _cap_user_prompt(instructions, f"{input_text}\n\n(Respond with a JSON object.)")
+    if image_bytes:
+        b64_image = base64.b64encode(image_bytes).decode("ascii")
+        input_payload = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": input_text},
+                    {
+                        "type": "input_image",
+                        "image_url": f"data:{mime_type or 'image/jpeg'};base64,{b64_image}",
+                    },
+                ],
+            }
+        ]
+    else:
+        input_payload = input_text
     response = _client.responses.create(
         model=OPENAI_MODEL,
         temperature=OPENAI_TEMPERATURE,
         max_output_tokens=max_output_tokens or OPENAI_MAX_TOKENS,
         instructions=f"{instructions}\n\n{SYSTEM_PROMPT_SUFFIX}",
-        input=input_text,
+        input=input_payload,
         text={"format": {"type": "json_object"}},
         previous_response_id=previous_response_id,
         store=True,

@@ -3,12 +3,6 @@ from typing import Any
 from pydantic import BaseModel
 
 
-class HealthSummaryRequest(BaseModel):
-    macAddress: str
-    userInput: str
-    previousResponseId: str
-
-
 class HealthSummaryData(BaseModel):
     macAddress: str
     previousResponseId: str
