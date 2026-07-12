@@ -209,12 +209,12 @@ def _sleep_row_has_data(row: SleepRecord) -> bool:
     return any(v is not None for v in (row.sleep_summary or {}).values())
 
 
-def _today_has_data(sleep_rows: list[SleepRecord], health_rows: list[HealthRecord], today: str) -> bool:
-    today_sleep = next((r for r in sleep_rows if r.date == today), None)
-    today_health = next((r for r in health_rows if r.date == today), None)
-    return (today_sleep is not None and _sleep_row_has_data(today_sleep)) or (
-        today_health is not None and _health_row_has_data(today_health)
-    )
+def _period_has_data(sleep_rows: list[SleepRecord], health_rows: list[HealthRecord]) -> bool:
+    """True if ANY day in the fetched 7-day window has usable data. Deliberately not limited to
+    the requested end date: a report is a 7-day trend summary, so a device that simply hasn't
+    synced yet for the most recent day(s) shouldn't block generation as long as earlier days in
+    the window have data."""
+    return any(_sleep_row_has_data(r) for r in sleep_rows) or any(_health_row_has_data(r) for r in health_rows)
 
 
 def _validate_mac_address(mac_address: str | None) -> str:
@@ -307,6 +307,10 @@ def get_or_generate_summary(
     input the caller wants reflected in this report."""
     mac_address = _validate_mac_address(mac_address)
     end_date = _validate_date(date_str)
+    # Normalized to a canonical zero-padded YYYY-MM-DD from here on, so it always matches the
+    # zero-padded date strings _week_dates() generates and SleepRecord/HealthRecord store —
+    # date_str itself may not be zero-padded even though _validate_date's strptime accepts it.
+    date_str = end_date.isoformat()
 
     device = db.query(DeviceRecord).filter(DeviceRecord.mac_address == mac_address).first()
     if device is None:
@@ -326,8 +330,8 @@ def get_or_generate_summary(
         .all()
     )
 
-    if not _today_has_data(sleep_rows, health_rows, date_str):
-        raise AnalysisError(422, "當日資料不足，無法生成數據摘要", code="INSUFFICIENT_DATA")
+    if not _period_has_data(sleep_rows, health_rows):
+        raise AnalysisError(422, "近 7 天內查無有效資料，無法生成數據摘要", code="INSUFFICIENT_DATA")
 
     sleep_data = _aggregate_sleep(sleep_rows)
     health_data = _aggregate_health(health_rows)
