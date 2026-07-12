@@ -1,5 +1,6 @@
 import json
 import math
+import os
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
@@ -16,6 +17,12 @@ from src.device.models.sleep_model import SleepRecord
 
 LOOKBACK_DAYS = 7
 PROMPT_VERSION = "data_summary_v1"
+
+# A full report has up to 15 metrics (name/value/unit/status/note each) plus an overall summary
+# and disclaimer, all in Traditional Chinese — this routinely exceeds the shared OPENAI_MAX_TOKENS
+# default (tuned for shorter chat-style replies) and gets truncated mid-JSON, so this endpoint
+# gets its own larger, independently-tunable budget instead of relying on that default.
+DATA_SUMMARY_MAX_TOKENS = int(os.getenv("DATA_SUMMARY_MAX_TOKENS", 2500))
 
 # No per-device timezone is stored anywhere in this codebase. `date` is treated as a wall-clock
 # calendar day in a single fixed offset for every device, matching the +08:00 example in the
@@ -273,6 +280,7 @@ def _generate_report(
             f"Input:\n{json.dumps(payload, default=str)}",
             image_bytes=image_bytes,
             mime_type=content_type,
+            max_output_tokens=DATA_SUMMARY_MAX_TOKENS,
         )
         return result, response_id
     except Exception as e:  # noqa: BLE001

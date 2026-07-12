@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -9,6 +10,12 @@ from src.core import ai_client, files
 from src.core.logging import logger
 
 PROMPT_VERSION = "health_summary_v2"
+
+# Answers can include key findings, possible relationships, recommendations, section-3.7
+# simulated/inferred estimates, limitations, and a disclaimer — this can exceed the shared
+# OPENAI_MAX_TOKENS default (tuned for shorter chat-style replies) and get truncated mid-JSON,
+# so this endpoint gets its own larger, independently-tunable budget instead of relying on it.
+HEALTH_SUMMARY_MAX_TOKENS = int(os.getenv("HEALTH_SUMMARY_MAX_TOKENS", 2000))
 
 _PROMPT_RULES = (Path(__file__).parent / "health_summary_prompt.md").read_text(encoding="utf-8")
 
@@ -65,6 +72,7 @@ def generate_health_summary(
             previous_response_id,
             image_bytes=image_bytes,
             mime_type=content_type,
+            max_output_tokens=HEALTH_SUMMARY_MAX_TOKENS,
         )
     except Exception as e:  # noqa: BLE001
         logger.exception("AI health summary generation failed")
