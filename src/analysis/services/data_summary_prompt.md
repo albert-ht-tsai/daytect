@@ -33,6 +33,7 @@ backend in the input payload (`sleep_data`, `health_data`, `metric_status`, `dat
    - 心率
    - 血壓
    - 血氧
+   - 呼吸次數
    - 體溫
    - HRV
    - 壓力
@@ -71,6 +72,8 @@ backend in the input payload (`sleep_data`, `health_data`, `metric_status`, `dat
     - 簡單且低風險的生活建議
 19. 使用繁體中文。
 20. 報告內容應簡潔清楚，避免過度醫療化或製造焦慮。
+21. 報告必須包含一個獨立的「主要發現」區塊，只列出 `data_quality.abnormal_metrics` 中出現的指標（即系統已判定為 `low` 或 `high` 的指標）。不得將狀態為 `normal`、`unknown` 或 `insufficient_data` 的指標放入主要發現，也不得自行判斷哪些指標「值得注意」。若 `data_quality.abnormal_metrics` 為空陣列，主要發現應說明本週各項指標大致落在一般範圍內，不列出個別指標。
+22. 「主要發現」不取代第 2 條要求的完整指標列表，兩者都必須提供。
 
 ## 3. 輸出規則
 
@@ -86,6 +89,7 @@ backend in the input payload (`sleep_data`, `health_data`, `metric_status`, `dat
 各指標平均數值
 各指標狀態
 各指標簡短說明
+主要發現（僅限 data_quality.abnormal_metrics 中的指標）
 整體摘要
 健康數據免責說明
 ```

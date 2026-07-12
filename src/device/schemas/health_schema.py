@@ -42,7 +42,11 @@ class Stress(BaseModel):
 
 
 class Met(BaseModel):
-    values: int | None = None
+    # float, not int: MET (metabolic equivalent) is inherently a decimal value (e.g. 2.7). Typing
+    # this as int previously caused pydantic to reject the *entire* HealthUploadRequest whenever
+    # the device sent a fractional MET, silently dropping heart rate/HRV/respiratory/etc for that
+    # day along with it.
+    values: float | None = None
 
 
 class BloodComponents(BaseModel):

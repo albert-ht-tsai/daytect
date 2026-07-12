@@ -16,12 +16,13 @@ from src.device.models.health_model import HealthRecord
 from src.device.models.sleep_model import SleepRecord
 
 LOOKBACK_DAYS = 7
-PROMPT_VERSION = "data_summary_v1"
+PROMPT_VERSION = "data_summary_v2"
 
-# A full report has up to 15 metrics (name/value/unit/status/note each) plus an overall summary
-# and disclaimer, all in Traditional Chinese — this routinely exceeds the shared OPENAI_MAX_TOKENS
-# default (tuned for shorter chat-style replies) and gets truncated mid-JSON, so this endpoint
-# gets its own larger, independently-tunable budget instead of relying on that default.
+# A full report has up to 16 metrics (name/value/unit/status/note each) plus a 主要發現 highlights
+# block, an overall summary, and disclaimer, all in Traditional Chinese — this routinely exceeds
+# the shared OPENAI_MAX_TOKENS default (tuned for shorter chat-style replies) and gets truncated
+# mid-JSON, so this endpoint gets its own larger, independently-tunable budget instead of relying
+# on that default.
 DATA_SUMMARY_MAX_TOKENS = int(os.getenv("DATA_SUMMARY_MAX_TOKENS", 2500))
 
 # No per-device timezone is stored anywhere in this codebase. `date` is treated as a wall-clock
@@ -50,6 +51,13 @@ _STRESS_HIGH_MIN = 30
 _MET_RANGE = (1.0, 3.0)
 _BP_LOW = (90, 60)  # systolic, diastolic
 _BP_HIGH = (130, 85)
+_RESPIRATORY_RANGE = (12, 20)  # general adult resting breaths/min
+# General consumer-wearable RMSSD-style HRV convention: lower is the flag worth surfacing (poor
+# recovery / high sympathetic load); there's no "too high" HRV concern, so this is a floor, not a
+# range, unlike the other metrics above.
+_HRV_NORMAL_MIN = 20
+# General sleep-hygiene convention: 0-2 nighttime awakenings is typical for adults.
+_AWAKE_COUNT_NORMAL_MAX = 2
 
 # metric -> (json key inside HealthRecord.data, sub-key) used both to average and to detect
 # whether a given day's row has usable data for that metric.
@@ -57,6 +65,7 @@ _HEALTH_METRIC_FIELDS = {
     "heart_rate_bpm": ("heartRate", "ppgs"),
     "blood_oxygen_percent": ("bloodOxygen", "oxygens"),
     "body_temperature_celsius": ("bodyTemperature", "temperature"),
+    "respiratory_breaths_per_min": ("respiratory", "resRates"),
     "hrv_ms": ("hrv", "values"),
     "stress": ("stress", "pressure"),
     "met": ("met", "values"),
@@ -155,8 +164,18 @@ def _blood_pressure_status(bp: dict) -> str:
     return "normal"
 
 
+def _presence_status(value) -> str:
+    """For metrics with no defensible general normal range (clock times, absolute light/deep
+    sleep minutes): report whether data exists at all rather than inventing a threshold, per
+    data_summary_prompt.md #9. Distinct from "unknown" (HRV-style, where a range was considered
+    and deliberately rejected) only in intent — same status string, since that's the vocabulary
+    the prompt already defines (data_summary_prompt.md #7)."""
+    return "insufficient_data" if value is None else "unknown"
+
+
 def _compute_metric_status(sleep_data: dict, health_data: dict) -> dict:
     sleep_quality = sleep_data["sleep_quality"]
+    awake_count = sleep_data["awake_count"]
     stress = health_data["stress"]
     met = health_data["met"]
     hrv = health_data["hrv_ms"]
@@ -169,6 +188,17 @@ def _compute_metric_status(sleep_data: dict, health_data: dict) -> dict:
         "sleep_duration_minutes": _status_from_range(
             sleep_data["sleep_duration_minutes"], *_SLEEP_DURATION_RANGE_MINUTES
         ),
+        "sleep_start_time": _presence_status(sleep_data["sleep_start_time"]),
+        "wake_up_time": _presence_status(sleep_data["wake_up_time"]),
+        "awake_count": (
+            "insufficient_data" if awake_count is None
+            else "normal" if awake_count <= _AWAKE_COUNT_NORMAL_MAX else "high"
+        ),
+        # This system's sleep data model never tracks a separate REM segment (see
+        # _aggregate_sleep), so this is always null and always reported as insufficient_data.
+        "rem_duration_minutes": "insufficient_data",
+        "light_sleep_duration_minutes": _presence_status(sleep_data["light_sleep_duration_minutes"]),
+        "deep_sleep_duration_minutes": _presence_status(sleep_data["deep_sleep_duration_minutes"]),
         "heart_rate_bpm": _status_from_range(health_data["heart_rate_bpm"], *_HEART_RATE_RANGE),
         "blood_pressure": _blood_pressure_status(health_data["blood_pressure"]),
         "blood_oxygen_percent": (
@@ -178,10 +208,15 @@ def _compute_metric_status(sleep_data: dict, health_data: dict) -> dict:
         "body_temperature_celsius": _status_from_range(
             health_data["body_temperature_celsius"], *_BODY_TEMPERATURE_RANGE
         ),
-        # HRV has no universally accepted normal range (it's highly individual), so — unlike the
-        # other metrics — a non-null average is still reported as "unknown" rather than guessing
-        # a threshold, per data_summary_prompt.md's own vocabulary for this case.
-        "hrv_ms": "insufficient_data" if hrv is None else "unknown",
+        "respiratory_breaths_per_min": _status_from_range(
+            health_data["respiratory_breaths_per_min"], *_RESPIRATORY_RANGE
+        ),
+        # General consumer-wearable convention (see _HRV_NORMAL_MIN): only a low reading is
+        # flagged, since higher HRV isn't a concern.
+        "hrv_ms": (
+            "insufficient_data" if hrv is None
+            else "low" if hrv < _HRV_NORMAL_MIN else "normal"
+        ),
         "stress": (
             "insufficient_data" if stress is None
             else "high" if stress >= _STRESS_HIGH_MIN else "normal"
@@ -193,6 +228,13 @@ def _compute_metric_status(sleep_data: dict, health_data: dict) -> dict:
             else "normal"
         ),
     }
+
+
+def _abnormal_metrics(metric_status: dict) -> list[str]:
+    """Metrics the system itself flagged as low/high — the only ones data_summary_prompt.md's
+    主要發現 (key findings) section is allowed to draw from, so the AI can't pad it with normal
+    metrics or invent its own notion of "notable"."""
+    return [metric for metric, status in metric_status.items() if status in ("low", "high")]
 
 
 def _missing_metrics(sleep_data: dict, health_data: dict) -> list[str]:
@@ -348,6 +390,7 @@ def get_or_generate_summary(
         "sleep_sample_days": len(sleep_rows),
         "health_sample_days": len(health_rows),
         "missing_metrics": _missing_metrics(sleep_data, health_data),
+        "abnormal_metrics": _abnormal_metrics(metric_status),
     }
 
     start_time = datetime.combine(start_date, time.min, tzinfo=REPORT_TZ)

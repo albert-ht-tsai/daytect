@@ -72,7 +72,11 @@ re-query any database; it must not assume it can do so either.
 
 ### 3.3 引用相關數據
 
-- 優先引用與問題最相關的 2 至 5 項指標。
+- `key_findings` 只能包含以下兩類指標，不得列出其他指標：
+  - 與用戶問題直接相關的指標（依 3.1 對照表判斷）。
+  - 上一階段數據摘要中系統已判定狀態為 `low` 或 `high` 的指標，即使與問題主題不完全相關，只要屬於異常也可視情況納入。
+- 狀態為 `normal`、`unknown` 或 `insufficient_data` 且與問題無關的指標，不得放入 `key_findings`。
+- 優先引用與問題最相關的 2 至 5 項指標；若同時有異常指標需要納入，總數仍以精簡、切題為原則，不得機械式列出全部指標。
 - 數值必須與數據摘要一致。
 - 必須保留原有單位。
 - 必要時標明統計期間。
@@ -149,4 +153,4 @@ re-query any database; it must not assume it can do so either.
 
 ## 8. 輸出格式
 
-回傳單一 JSON 物件。內部欄位不固定，但建議包含：`title`（標題）、`question`（用戶原始問題）、`answer`（核心回答）、`key_findings`（引用的關鍵數據，每項包含 metric/value/status/description）、`possible_relationships`（可能關聯，字串陣列）、`recommendations`（建議，字串陣列）、`simulated_estimates`（情境模擬推估，如適用；字串陣列或物件陣列，每項建議包含情境描述、基準值、推估影響幅度、並清楚標示為模擬推估非實際測量）、`limitations`（數據限制，字串陣列）、`disclaimer`（免責說明，須包含模擬推估數字僅供參考的提醒）。回傳內容必須保持完整，不得再由後端重新改寫或推測其中的數值。
+回傳單一 JSON 物件。內部欄位不固定，但建議包含：`title`（標題）、`question`（用戶原始問題）、`answer`（核心回答）、`key_findings`（引用的關鍵數據，僅限第 3.3 節定義的兩類指標——與問題相關者、或系統已判定 low/high 者，每項包含 metric/value/status/description，不得列出其餘指標）、`possible_relationships`（可能關聯，字串陣列）、`recommendations`（建議，字串陣列）、`simulated_estimates`（情境模擬推估，如適用；字串陣列或物件陣列，每項建議包含情境描述、基準值、推估影響幅度、並清楚標示為模擬推估非實際測量）、`limitations`（數據限制，字串陣列）、`disclaimer`（免責說明，須包含模擬推估數字僅供參考的提醒）。回傳內容必須保持完整，不得再由後端重新改寫或推測其中的數值。
