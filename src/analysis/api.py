@@ -34,10 +34,14 @@ def _coded_error_response(error: AnalysisError) -> JSONResponse:
     )
 
 
-async def _read_single_image(image: list[UploadFile]) -> tuple[bytes | None, str | None]:
-    if len(image) > 1:
+async def _read_single_image(image: list[UploadFile | str]) -> tuple[bytes | None, str | None]:
+    """Some clients submit an empty string for an untouched file input instead of omitting the
+    field entirely, which FastAPI can't coerce into UploadFile — filter those out rather than
+    letting them fail validation, so an optional image truly stays optional."""
+    files = [img for img in image if isinstance(img, UploadFile)]
+    if len(files) > 1:
         raise AnalysisError(400, "一次最多上傳 1 張圖片")
-    picked = image[0] if image else None
+    picked = files[0] if files else None
     if picked is None:
         return None, None
     return await picked.read(), picked.content_type
@@ -50,7 +54,7 @@ async def request_endpoint(
     session_id: str | None = Form(None),
     prev_summary: str | None = Form(None),
     message: str | None = Form(None),
-    image: list[UploadFile] = File(default_factory=list),
+    image: list[UploadFile | str] = File(default_factory=list),
     language: str = Form("en"),
 ):
     try:
@@ -125,7 +129,7 @@ async def data_summary_endpoint(
     db: SessionDep,
     macAddress: str | None = Form(None),
     date: str | None = Form(None),
-    image: list[UploadFile] = File(default_factory=list),
+    image: list[UploadFile | str] = File(default_factory=list),
 ):
     try:
         image_bytes, content_type = await _read_single_image(image)
@@ -155,7 +159,7 @@ async def health_summary_endpoint(
     macAddress: str = Form(...),
     userInput: str = Form(...),
     previousResponseId: str = Form(...),
-    image: list[UploadFile] = File(default_factory=list),
+    image: list[UploadFile | str] = File(default_factory=list),
 ):
     try:
         image_bytes, content_type = await _read_single_image(image)
