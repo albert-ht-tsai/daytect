@@ -36,7 +36,7 @@ async def _read_single_image(image: list[UploadFile | str]) -> tuple[bytes | Non
 @router.post("/profile", response_model=ProfileSummaryResponse)
 async def profile_endpoint(
     db: SessionDep,
-    macaddress: str = Form(...),
+    macAddress: str = Form(...),
     previous_response_id: str | None = Form(None),
     image: list[UploadFile | str] = File(default_factory=list),
     language: Literal["en", "zh"] = Form("zh"),
@@ -47,7 +47,7 @@ async def profile_endpoint(
     try:
         image_bytes, content_type = await _read_single_image(image)
         record = profile_summary_service.generate_profile_summary(
-            db, macaddress, previous_response_id, image_bytes, content_type, language
+            db, macAddress, previous_response_id, image_bytes, content_type, language
         )
     except AssistantError as e:
         return _error_response(e)
@@ -76,7 +76,7 @@ async def profile_endpoint(
 @router.post("/trend", response_model=TrendSummaryResponse)
 async def trend_endpoint(
     db: SessionDep,
-    macaddress: str = Form(...),
+    macAddress: str = Form(...),
     previous_response_id: str = Form(...),
     date: str | None = Form(None),
     image: list[UploadFile | str] = File(default_factory=list),
@@ -89,7 +89,7 @@ async def trend_endpoint(
     try:
         image_bytes, content_type = await _read_single_image(image)
         record = trend_summary_service.generate_trend_summary(
-            db, macaddress, previous_response_id, image_bytes, content_type, language, date
+            db, macAddress, previous_response_id, image_bytes, content_type, language, date
         )
     except AssistantError as e:
         return _error_response(e)
@@ -116,7 +116,7 @@ async def trend_endpoint(
 @router.post("/question", response_model=QuestionSummaryResponse)
 async def question_endpoint(
     db: SessionDep,
-    macaddress: str = Form(...),
+    macAddress: str = Form(...),
     previous_response_id: str = Form(...),
     message: str | None = Form(None),
     image: list[UploadFile | str] = File(default_factory=list),
@@ -127,7 +127,7 @@ async def question_endpoint(
     try:
         image_bytes, content_type = await _read_single_image(image)
         record = question_summary_service.generate_question_summary(
-            db, macaddress, previous_response_id, message, image_bytes, content_type, language
+            db, macAddress, previous_response_id, message, image_bytes, content_type, language
         )
     except AssistantError as e:
         return _error_response(e)
