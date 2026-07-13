@@ -9,6 +9,7 @@ class SleepRecordPayload(BaseModel):
     wakeCount: int | None = None
     deepSleepTime: int | None = None
     lowSleepTime: int | None = None
+    remSleepTime: int | None = None
     allSleepTime: int | None = None
     sleepLine: str | None = None
 
@@ -18,6 +19,7 @@ class SleepSummaryPayload(BaseModel):
     wakeCount: int | None = None
     deepSleepTime: int | None = None
     lowSleepTime: int | None = None
+    remSleepTime: int | None = None
     allSleepTime: int | None = None
     segmentCount: int | None = None
     sleepDown: str | None = None

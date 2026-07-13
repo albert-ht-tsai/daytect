@@ -58,6 +58,7 @@ def _compute_summary(records: list[SleepRecordPayload]) -> dict:
         "wakeCount": _sum([r.wakeCount for r in records]),
         "deepSleepTime": _sum([r.deepSleepTime for r in records]),
         "lowSleepTime": _sum([r.lowSleepTime for r in records]),
+        "remSleepTime": _sum([r.remSleepTime for r in records]),
         "allSleepTime": _sum([r.allSleepTime for r in records]),
         "segmentCount": len(records),
         "sleepDown": _earliest([r.startDateTime for r in records]),

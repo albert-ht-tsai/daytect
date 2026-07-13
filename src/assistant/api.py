@@ -51,6 +51,7 @@ async def profile_endpoint(
         )
     except AssistantError as e:
         return _error_response(e)
+    bmi, bmi_category = profile_summary_service.compute_bmi(record.height, record.weight)
     return {
         "success": True,
         "data": {
@@ -60,6 +61,8 @@ async def profile_endpoint(
                 "age": record.age,
                 "height": record.height,
                 "weight": record.weight,
+                "bmi": bmi,
+                "bmiCategory": bmi_category,
                 "allergy": record.allergy or "",
                 "medicalHistory": record.medical_history or "",
             },

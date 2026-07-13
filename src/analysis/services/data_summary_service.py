@@ -62,10 +62,11 @@ _AWAKE_COUNT_NORMAL_MAX = 2
 # status comparisons must treat this as a circular window, not a plain low/high range.
 _SLEEP_START_NORMAL_RANGE = ("22:00", "01:00")
 _WAKE_UP_NORMAL_RANGE = ("06:00", "09:00")
-# General sleep-stage-proportion convention for adults: deep sleep ~13-23% and light sleep
-# ~50-60% of a typical 7-9h (420-540 min) night, expressed here as absolute minutes.
+# General sleep-stage-proportion convention for adults: deep sleep ~13-23%, light sleep ~50-60%,
+# and REM sleep ~20-25% of a typical 7-9h (420-540 min) night, expressed here as absolute minutes.
 _DEEP_SLEEP_RANGE_MINUTES = (60, 110)
 _LIGHT_SLEEP_RANGE_MINUTES = (180, 300)
+_REM_SLEEP_RANGE_MINUTES = (90, 120)
 
 # metric -> (json key inside HealthRecord.data, sub-key) used both to average and to detect
 # whether a given day's row has usable data for that metric.
@@ -130,9 +131,10 @@ def _aggregate_sleep(sleep_rows: list[SleepRecord]) -> dict:
         "sleep_start_time": _circular_mean_clock([s.get("sleepDown") for s in summaries]),
         "wake_up_time": _circular_mean_clock([s.get("sleepUp") for s in summaries]),
         "awake_count": _average([s.get("wakeCount") for s in summaries]),
-        # This system's sleep data model only tracks deep/light/total sleep, never a separate
-        # REM segment, so this is always reported as unavailable rather than fabricated.
-        "rem_duration_minutes": None,
+        # remSleepTime is only present in rows uploaded after the device schema gained this
+        # field (see sleep_schema.SleepRecordPayload/SleepSummaryPayload) — older rows simply
+        # lack the key, so .get() naturally falls back to unavailable rather than fabricated.
+        "rem_duration_minutes": _average([s.get("remSleepTime") for s in summaries]),
         "light_sleep_duration_minutes": _average([s.get("lowSleepTime") for s in summaries]),
         "deep_sleep_duration_minutes": _average([s.get("deepSleepTime") for s in summaries]),
     }
@@ -217,9 +219,9 @@ def _compute_metric_status(sleep_data: dict, health_data: dict) -> dict:
             "insufficient_data" if awake_count is None
             else "normal" if awake_count <= _AWAKE_COUNT_NORMAL_MAX else "high"
         ),
-        # This system's sleep data model never tracks a separate REM segment (see
-        # _aggregate_sleep), so this is always null and always reported as insufficient_data.
-        "rem_duration_minutes": "insufficient_data",
+        "rem_duration_minutes": _status_from_range(
+            sleep_data["rem_duration_minutes"], *_REM_SLEEP_RANGE_MINUTES
+        ),
         "light_sleep_duration_minutes": _status_from_range(
             sleep_data["light_sleep_duration_minutes"], *_LIGHT_SLEEP_RANGE_MINUTES
         ),

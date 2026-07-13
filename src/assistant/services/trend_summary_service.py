@@ -86,10 +86,10 @@ def _aggregate_sleep_trend(rows: list[SleepRecord]) -> dict:
         "sleepQuality": _numeric_stats([s.get("sleepQuality") for s in summaries]),
         "totalSleep": _numeric_stats([s.get("allSleepTime") for s in summaries]),
         "wakeCount": _numeric_stats([s.get("wakeCount") for s in summaries]),
-        # This system's sleep data model only tracks deep/light/total sleep, never a separate
-        # REM segment (see data_summary_service._aggregate_sleep), so this is always reported
-        # as unavailable rather than fabricated.
-        "rem": {"avg": None, "min": None, "max": None},
+        # remSleepTime is only present in SleepRecord.sleep_summary rows uploaded after the
+        # device schema gained this field (see sleep_schema.SleepRecordPayload/SleepSummaryPayload)
+        # — older rows simply lack the key, so .get() naturally falls back to insufficient data.
+        "remSleepTime": _numeric_stats([s.get("remSleepTime") for s in summaries]),
         "lightSleep": _numeric_stats([s.get("lowSleepTime") for s in summaries]),
         "deepSleep": _numeric_stats([s.get("deepSleepTime") for s in summaries]),
         "sleepUp": _clock_stats([s.get("sleepUp") for s in summaries]),

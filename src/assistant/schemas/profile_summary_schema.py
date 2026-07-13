@@ -8,6 +8,8 @@ class ProfileInfo(BaseModel):
     age: int
     height: float
     weight: float
+    bmi: float
+    bmiCategory: str
     allergy: str
     medicalHistory: str
 

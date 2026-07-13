@@ -47,7 +47,7 @@ compute averages/min/max itself — those are always supplied by the backend in 
     "sleepQuality": {"value": 0, "label": "normal", "suggestion": ""},
     "totalSleep": {"value": 0, "label": "normal", "suggestion": ""},
     "wakeCount": {"value": 0, "label": "normal", "suggestion": ""},
-    "rem": {"value": null, "label": "insufficient_data", "suggestion": ""},
+    "remSleepTime": {"value": 0, "label": "normal", "suggestion": ""},
     "lightSleep": {"value": 0, "label": "normal", "suggestion": ""},
     "deepSleep": {"value": 0, "label": "normal", "suggestion": ""},
     "sleepUp": {"value": "00:00", "label": "normal", "suggestion": ""},

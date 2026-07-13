@@ -22,6 +22,25 @@ Return a single JSON object: {{"summary": "<string>"}}."""
 _ELDERLY_AGE_MIN = 65
 _NO_HISTORY_VALUES = {"", "無", "无", "none", "n/a", "na"}
 
+# Standard WHO BMI cutoffs — general, non-personalized reference (same non-clinical-constant
+# convention as data_summary_service's threshold tables), not derived from level/standard.
+_BMI_CATEGORIES = (
+    (18.5, "體重過輕"),
+    (25.0, "正常範圍"),
+    (30.0, "過重"),
+)
+
+
+def compute_bmi(height_cm: float, weight_kg: float) -> tuple[float, str]:
+    """Returns (bmi, category) computed deterministically from height/weight — never left to the
+    AI, matching this codebase's system-computes-the-number convention."""
+    height_m = height_cm / 100
+    bmi = round(weight_kg / (height_m * height_m), 1)
+    for upper_bound, category in _BMI_CATEGORIES:
+        if bmi < upper_bound:
+            return bmi, category
+    return bmi, "肥胖"
+
 
 def _has_medical_history(value: str | None) -> bool:
     return bool(value) and value.strip().lower() not in _NO_HISTORY_VALUES
@@ -53,12 +72,14 @@ def _save_uploaded_image(image_bytes: bytes, content_type: str | None) -> str | 
     return files.save_analysis_image(image_bytes, content_type, pic_id)
 
 
-def _build_payload(info: PersonInfoRecord, level_label: str, standard: str) -> dict:
+def _build_payload(info: PersonInfoRecord, level_label: str, standard: str, bmi: float, bmi_category: str) -> dict:
     return {
         "sex": info.sex,
         "age": info.age,
         "height": info.height,
         "weight": info.weight,
+        "bmi": bmi,
+        "bmiCategory": bmi_category,
         "allergy": info.allergy or "無",
         "medicalHistory": info.medical_history or "無",
         "level": level_label,
@@ -88,7 +109,8 @@ def generate_profile_summary(
         raise AssistantError(400, "用戶尚未保存身體特徵信息，請先上傳個人身體特徵資料", code="PERSON_INFO_NOT_FOUND")
 
     level, level_label, standard = _determine_level(person_info.age, person_info.medical_history)
-    payload = _build_payload(person_info, level_label, standard)
+    bmi, bmi_category = compute_bmi(person_info.height, person_info.weight)
+    payload = _build_payload(person_info, level_label, standard, bmi, bmi_category)
 
     try:
         prompt = ai_client.with_language(_SYSTEM_PROMPT, language)
