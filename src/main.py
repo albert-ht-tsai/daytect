@@ -10,6 +10,10 @@ from src.analysis.models.analysis_pic_model import AnalysisPicRecord  # noqa: F4
 from src.analysis.models.analysis_summary_model import AnalysisSummaryRecord  # noqa: F401
 from src.analysis.models.data_summary_model import DataSummaryRecord  # noqa: F401
 from src.analysis.models.health_summary_model import HealthSummaryRecord  # noqa: F401
+from src.assistant.api import router as assistant_router
+from src.assistant.models.profile_summary_model import ProfileSummaryRecord  # noqa: F401
+from src.assistant.models.question_summary_model import QuestionSummaryRecord  # noqa: F401
+from src.assistant.models.trend_summary_model import TrendSummaryRecord  # noqa: F401
 from src.core.database import init_db
 from src.device.api import router as device_router
 from src.device.models.activity_model import ActivityRecord  # noqa: F401
@@ -43,5 +47,6 @@ v1_router = APIRouter(prefix="/v1")
 v1_router.include_router(device_router)
 v1_router.include_router(analysis_router)
 v1_router.include_router(health_router)
+v1_router.include_router(assistant_router)
 
 app.include_router(v1_router)

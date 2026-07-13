@@ -80,3 +80,10 @@ class HealthUploadRequest(BaseModel):
     macAddress: str
     date: str
     healthAvgRecord: HealthAvgRecordPayload
+
+
+class HealthDataResponse(BaseModel):
+    id: int
+    macAddress: str
+    date: str
+    healthAvgRecord: HealthAvgRecordPayload | None = None

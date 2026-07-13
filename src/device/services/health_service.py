@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 
 from src.device.models.device_model import DeviceRecord
 from src.device.models.health_model import HealthRecord
-from src.device.schemas.health_schema import HealthUploadRequest
+from src.device.schemas.health_schema import HealthDataResponse, HealthUploadRequest
 
 
 def upload_health(db: Session, body: HealthUploadRequest) -> DeviceRecord:
@@ -27,3 +27,23 @@ def upload_health(db: Session, body: HealthUploadRequest) -> DeviceRecord:
         existing.data = data
     db.commit()
     return device
+
+
+def get_health(db: Session, mac_address: str, date: str) -> HealthDataResponse | None:
+    device = db.query(DeviceRecord).filter(DeviceRecord.mac_address == mac_address).first()
+    if device is None:
+        return None
+
+    record = db.query(HealthRecord).filter(
+        HealthRecord.device_id == device.id,
+        HealthRecord.date == date,
+    ).first()
+    if record is None:
+        return None
+
+    return HealthDataResponse(
+        id=record.id,
+        macAddress=mac_address,
+        date=record.date,
+        healthAvgRecord=record.data,
+    )
