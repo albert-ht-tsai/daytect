@@ -10,6 +10,7 @@ class PersonInfoRecord(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     device_id = Column(Integer, unique=True, nullable=False, index=True)
+    mac_address = Column(String(50), nullable=True, index=True)
     sex = Column(String(10), nullable=False)
     age = Column(Integer, nullable=False)
     height = Column(Float, nullable=False)

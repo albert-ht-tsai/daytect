@@ -20,6 +20,7 @@ def upload_person_info(db: Session, body: PersonInfoUploadRequest) -> DeviceReco
         db.add(
             PersonInfoRecord(
                 device_id=device.id,
+                mac_address=body.macAddress,
                 sex=body.sex,
                 age=body.age,
                 height=body.height,
@@ -29,6 +30,7 @@ def upload_person_info(db: Session, body: PersonInfoUploadRequest) -> DeviceReco
             )
         )
     else:
+        existing.mac_address = body.macAddress
         existing.sex = body.sex
         existing.age = body.age
         existing.height = body.height

@@ -85,7 +85,7 @@ def generate_profile_summary(
 
     person_info = db.query(PersonInfoRecord).filter(PersonInfoRecord.device_id == device.id).first()
     if person_info is None:
-        raise AssistantError(400, "請先上傳個人健康基礎信息", code="PERSON_INFO_NOT_FOUND")
+        raise AssistantError(400, "用戶尚未保存身體特徵信息，請先上傳個人身體特徵資料", code="PERSON_INFO_NOT_FOUND")
 
     level, level_label, standard = _determine_level(person_info.age, person_info.medical_history)
     payload = _build_payload(person_info, level_label, standard)

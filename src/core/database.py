@@ -74,6 +74,16 @@ def _run_migrations() -> None:
         "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS sleep_summary TEXT",
         "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS activity_summary TEXT",
         "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS health_summary TEXT",
+        "ALTER TABLE person_info_records ADD COLUMN IF NOT EXISTS mac_address VARCHAR(50)",
+        # Backfills mac_address for rows saved before this column existed, from the
+        # device_records row each already links to via device_id.
+        """
+        UPDATE person_info_records
+        SET mac_address = device_records.mac_address
+        FROM device_records
+        WHERE person_info_records.device_id = device_records.id
+          AND person_info_records.mac_address IS NULL
+        """,
     ]
     with engine.begin() as conn:
         for stmt in stmts:
