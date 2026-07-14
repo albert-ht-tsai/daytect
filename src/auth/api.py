@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 from src.auth.schemas.auth_schema import (
     LoginRequest,
+    LogoutRequest,
     RegisterRequest,
     SendVerificationRequest,
     TokenResponse,
@@ -46,3 +47,12 @@ def login_endpoint(body: LoginRequest, db: SessionDep):
     except AuthError as e:
         return _error_response(e)
     return result
+
+
+@router.post("/logout")
+def logout_endpoint(body: LogoutRequest, db: SessionDep):
+    try:
+        auth_service.logout(db, body)
+    except AuthError as e:
+        return _error_response(e)
+    return {"success": True, "message": "Logged out successfully"}

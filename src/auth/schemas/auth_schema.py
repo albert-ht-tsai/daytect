@@ -32,5 +32,8 @@ class LoginRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     accessToken: str
-    refreshToken: str
     tokenType: str = "bearer"
+
+
+class LogoutRequest(BaseModel):
+    accessToken: str

@@ -15,6 +15,7 @@ from src.assistant.models.profile_summary_model import ProfileSummaryRecord  # n
 from src.assistant.models.question_summary_model import QuestionSummaryRecord  # noqa: F401
 from src.assistant.models.trend_summary_model import TrendSummaryRecord  # noqa: F401
 from src.auth.api import router as auth_router
+from src.auth.models.revoked_token_model import RevokedTokenRecord  # noqa: F401
 from src.auth.models.user_model import UserRecord  # noqa: F401
 from src.auth.models.verification_code_model import VerificationCodeRecord  # noqa: F401
 from src.core.database import init_db

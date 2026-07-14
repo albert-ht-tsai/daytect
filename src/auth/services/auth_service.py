@@ -1,12 +1,15 @@
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
+from jose import JWTError
 from sqlalchemy.orm import Session
 
+from src.auth.models.revoked_token_model import RevokedTokenRecord
 from src.auth.models.user_model import UserRecord
 from src.auth.models.verification_code_model import VerificationCodeRecord
 from src.auth.schemas.auth_schema import (
     LoginRequest,
+    LogoutRequest,
     RegisterRequest,
     SendVerificationRequest,
     TokenResponse,
@@ -15,8 +18,9 @@ from src.auth.services.errors import AuthError
 from src.core.email import send_email
 from src.core.security import (
     create_access_token,
-    create_refresh_token,
+    decode_token,
     get_password_hash,
+    hash_token,
     verify_password,
 )
 
@@ -81,5 +85,37 @@ def login(db: Session, body: LoginRequest) -> TokenResponse:
         db.commit()
 
     access_token, _ = create_access_token(user.email)
-    refresh_token, _ = create_refresh_token(user.email)
-    return TokenResponse(accessToken=access_token, refreshToken=refresh_token)
+    return TokenResponse(accessToken=access_token)
+
+
+def logout(db: Session, body: LogoutRequest) -> None:
+    """Revokes the access token by recording its hash in RevokedTokenRecord, so a future
+    token-verification dependency can reject it even though it hasn't naturally expired yet."""
+    try:
+        # verify_exp=False: a token that's already expired is already unusable, so still record
+        # it (idempotent, no error) rather than making logout fail for a client retrying late.
+        payload = decode_token(body.accessToken, verify_exp=False)
+    except JWTError:
+        raise AuthError(401, "Invalid token") from None
+
+    token_hash = hash_token(body.accessToken)
+    already_revoked = (
+        db.query(RevokedTokenRecord).filter(RevokedTokenRecord.token_hash == token_hash).first()
+    )
+    if already_revoked is not None:
+        return
+
+    db.add(
+        RevokedTokenRecord(
+            token_hash=token_hash,
+            subject=payload.get("sub"),
+            expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+        )
+    )
+    db.commit()
+
+
+def is_token_revoked(db: Session, token: str) -> bool:
+    """Hook for a future token-verification dependency (none exists yet in this codebase — see
+    /auth/logout) to check before accepting a bearer token."""
+    return db.query(RevokedTokenRecord).filter(RevokedTokenRecord.token_hash == hash_token(token)).first() is not None
