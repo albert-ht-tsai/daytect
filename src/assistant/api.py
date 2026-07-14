@@ -37,17 +37,17 @@ async def _read_single_image(image: list[UploadFile | str]) -> tuple[bytes | Non
 async def profile_endpoint(
     db: SessionDep,
     macAddress: str = Form(...),
-    previous_response_id: str | None = Form(None),
+    response_id: str | None = Form(None),
     image: list[UploadFile | str] = File(default_factory=list),
     language: Literal["en", "zh"] = Form("zh"),
 ):
-    """Stage 1: 分析個人身體並生成摘要. Not chained from anything (previous_response_id is
-    optional here — pass one only to continue this device's own profile thread), returns
-    responseId to chain into /assistant/trend."""
+    """Stage 1: 分析個人身體並生成摘要. Not chained from anything (response_id is optional here
+    — pass the previous call's responseId only to continue this device's own profile thread),
+    returns responseId to chain into /assistant/trend."""
     try:
         image_bytes, content_type = await _read_single_image(image)
         record = profile_summary_service.generate_profile_summary(
-            db, macAddress, previous_response_id, image_bytes, content_type, language
+            db, macAddress, response_id, image_bytes, content_type, language
         )
     except AssistantError as e:
         return _error_response(e)
@@ -79,19 +79,19 @@ async def profile_endpoint(
 async def trend_endpoint(
     db: SessionDep,
     macAddress: str = Form(...),
-    previous_response_id: str = Form(...),
+    response_id: str = Form(...),
     date: str | None = Form(None),
     image: list[UploadFile | str] = File(default_factory=list),
     language: Literal["en", "zh"] = Form("zh"),
 ):
     """Stage 2: 分析個人健康趨勢並生成摘要. Must be chained from /assistant/profile's
-    responseId so the AI already has this user's body-characteristic level in context.
-    `date` (YYYY-MM-DD, optional) is the last day of the trailing 7-day window to query;
-    defaults to today (REPORT_TZ) when omitted."""
+    responseId (passed here as `response_id`) so the AI already has this user's
+    body-characteristic level in context. `date` (YYYY-MM-DD, optional) is the last day of the
+    trailing 7-day window to query; defaults to today (REPORT_TZ) when omitted."""
     try:
         image_bytes, content_type = await _read_single_image(image)
         record = trend_summary_service.generate_trend_summary(
-            db, macAddress, previous_response_id, image_bytes, content_type, language, date
+            db, macAddress, response_id, image_bytes, content_type, language, date
         )
     except AssistantError as e:
         return _error_response(e)
@@ -120,17 +120,18 @@ async def trend_endpoint(
 async def question_endpoint(
     db: SessionDep,
     macAddress: str = Form(...),
-    previous_response_id: str = Form(...),
+    response_id: str = Form(...),
     message: str | None = Form(None),
     image: list[UploadFile | str] = File(default_factory=list),
     language: Literal["en", "zh"] = Form("zh"),
 ):
     """Stage 3: 分析用戶問題並生成摘要. Must be chained from /assistant/trend's responseId (or
-    an earlier /assistant/question turn's responseId for a follow-up question)."""
+    an earlier /assistant/question turn's responseId for a follow-up question), passed here as
+    `response_id`."""
     try:
         image_bytes, content_type = await _read_single_image(image)
         record = question_summary_service.generate_question_summary(
-            db, macAddress, previous_response_id, message, image_bytes, content_type, language
+            db, macAddress, response_id, message, image_bytes, content_type, language
         )
     except AssistantError as e:
         return _error_response(e)

@@ -215,7 +215,7 @@ def _validate(mac_address: str | None, previous_response_id: str | None) -> tupl
         raise AssistantError(400, "macAddress 不可為空", code="INVALID_PARAMETER")
     if not previous_response_id or not previous_response_id.strip():
         raise AssistantError(
-            400, "previousResponseId 不可為空，請先呼叫 /assistant/profile", code="INVALID_PARAMETER"
+            400, "responseId 不可為空，請先呼叫 /assistant/profile", code="INVALID_PARAMETER"
         )
     return mac_address.strip(), previous_response_id.strip()
 
