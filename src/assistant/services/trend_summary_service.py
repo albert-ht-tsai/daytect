@@ -16,7 +16,7 @@ from src.device.models.health_model import HealthRecord
 from src.device.models.sleep_model import SleepRecord
 
 LOOKBACK_DAYS = 7
-TREND_SUMMARY_MAX_TOKENS = int(os.getenv("ASSISTANT_TREND_MAX_TOKENS", 2000))
+TREND_SUMMARY_MAX_TOKENS = int(os.getenv("ASSISTANT_TREND_MAX_TOKENS", 3000))
 
 # No per-device timezone is stored anywhere in this codebase; matches data_summary_service's
 # fixed +08:00 treatment of "today" for every device.
@@ -25,8 +25,9 @@ REPORT_TZ = timezone(timedelta(hours=8))
 _PROMPT_RULES = (Path(__file__).parent / "trend_prompt.md").read_text(encoding="utf-8")
 _SYSTEM_PROMPT = f"""{_PROMPT_RULES}
 
-Return a single JSON object containing the per-metric assessment described above. The exact
-field names are up to you; the content and rules above are not."""
+Return a single JSON object containing the overall summary, today's recommendations, and the
+per-metric assessment described above. The exact field names are up to you; the content and
+rules above are not."""
 
 
 def _numeric_stats(values: list[float | None]) -> dict:
@@ -80,20 +81,44 @@ def _clock_stats(iso_strings: list[str | None]) -> dict:
     }
 
 
-def _aggregate_sleep_trend(rows: list[SleepRecord]) -> dict:
+def _stats_with_today(stats_fn, all_values: list, today_values: list) -> dict:
+    """Adds a `today` key — computed via the same stats_fn so it's formatted identically to
+    avg/min/max (e.g. a clock string, not a raw ISO timestamp) — holding the most recent day's
+    own reading alongside the trailing-7-day avg/min/max baseline. Falls back to `None` (never to
+    the 7-day avg) when today hasn't synced any data yet, so the AI can tell the two cases apart
+    instead of silently treating "no data" as "unchanged from average"."""
+    stats = stats_fn(all_values)
+    present_today = [v for v in today_values if v is not None]
+    stats["today"] = stats_fn(present_today)["avg"] if present_today else None
+    return stats
+
+
+def _aggregate_sleep_trend(rows: list[SleepRecord], today_date: str) -> dict:
     summaries = [row.sleep_summary or {} for row in rows]
+    today_summaries = [row.sleep_summary or {} for row in rows if row.date == today_date]
+
+    def numeric(field: str) -> dict:
+        return _stats_with_today(
+            _numeric_stats, [s.get(field) for s in summaries], [s.get(field) for s in today_summaries]
+        )
+
+    def clock(field: str) -> dict:
+        return _stats_with_today(
+            _clock_stats, [s.get(field) for s in summaries], [s.get(field) for s in today_summaries]
+        )
+
     return {
-        "sleepQuality": _numeric_stats([s.get("sleepQuality") for s in summaries]),
-        "totalSleep": _numeric_stats([s.get("allSleepTime") for s in summaries]),
-        "wakeCount": _numeric_stats([s.get("wakeCount") for s in summaries]),
+        "sleepQuality": numeric("sleepQuality"),
+        "totalSleep": numeric("allSleepTime"),
+        "wakeCount": numeric("wakeCount"),
         # remSleepTime is only present in SleepRecord.sleep_summary rows uploaded after the
         # device schema gained this field (see sleep_schema.SleepRecordPayload/SleepSummaryPayload)
         # — older rows simply lack the key, so .get() naturally falls back to insufficient data.
-        "remSleepTime": _numeric_stats([s.get("remSleepTime") for s in summaries]),
-        "lightSleep": _numeric_stats([s.get("lowSleepTime") for s in summaries]),
-        "deepSleep": _numeric_stats([s.get("deepSleepTime") for s in summaries]),
-        "sleepUp": _clock_stats([s.get("sleepUp") for s in summaries]),
-        "sleepDown": _clock_stats([s.get("sleepDown") for s in summaries]),
+        "remSleepTime": numeric("remSleepTime"),
+        "lightSleep": numeric("lowSleepTime"),
+        "deepSleep": numeric("deepSleepTime"),
+        "sleepUp": clock("sleepUp"),
+        "sleepDown": clock("sleepDown"),
     }
 
 
@@ -107,32 +132,47 @@ def _bp_string(systolic: float | None, diastolic: float | None) -> str | None:
     return f"{systolic}/{diastolic}" if systolic is not None and diastolic is not None else None
 
 
-def _aggregate_health_trend(rows: list[HealthRecord]) -> dict:
-    systolic_stats = _numeric_stats([_health_field(r, "bloodPressure", "systolic") for r in rows])
-    diastolic_stats = _numeric_stats([_health_field(r, "bloodPressure", "diastolic") for r in rows])
+def _aggregate_health_trend(rows: list[HealthRecord], today_date: str) -> dict:
+    today_rows = [r for r in rows if r.date == today_date]
+
+    def numeric(key: str, sub_key: str) -> dict:
+        return _stats_with_today(
+            _numeric_stats,
+            [_health_field(r, key, sub_key) for r in rows],
+            [_health_field(r, key, sub_key) for r in today_rows],
+        )
+
+    systolic_stats = numeric("bloodPressure", "systolic")
+    diastolic_stats = numeric("bloodPressure", "diastolic")
     return {
-        "heartRate": _numeric_stats([_health_field(r, "heartRate", "ppgs") for r in rows]),
+        "heartRate": numeric("heartRate", "ppgs"),
         "bloodPressure": {
             "avg": _bp_string(systolic_stats["avg"], diastolic_stats["avg"]),
             "min": _bp_string(systolic_stats["min"], diastolic_stats["min"]),
             "max": _bp_string(systolic_stats["max"], diastolic_stats["max"]),
+            "today": _bp_string(systolic_stats["today"], diastolic_stats["today"]),
         },
-        "bloodOxygen": _numeric_stats([_health_field(r, "bloodOxygen", "oxygens") for r in rows]),
-        "bodyTemperature": _numeric_stats([_health_field(r, "bodyTemperature", "temperature") for r in rows]),
-        "hrv": _numeric_stats([_health_field(r, "hrv", "values") for r in rows]),
-        "stress": _numeric_stats([_health_field(r, "stress", "pressure") for r in rows]),
-        "met": _numeric_stats([_health_field(r, "met", "values") for r in rows]),
+        "bloodOxygen": numeric("bloodOxygen", "oxygens"),
+        "bodyTemperature": numeric("bodyTemperature", "temperature"),
+        "hrv": numeric("hrv", "values"),
+        "stress": numeric("stress", "pressure"),
+        "met": numeric("met", "values"),
     }
 
 
-def _aggregate_activity_trend(rows: list[ActivityRecord]) -> dict:
+def _aggregate_activity_trend(rows: list[ActivityRecord], today_date: str) -> dict:
+    today_rows = [r for r in rows if r.date == today_date]
+
     def field(row: ActivityRecord, key: str) -> float | None:
         return (row.data or {}).get(key)
 
+    def numeric(key: str) -> dict:
+        return _stats_with_today(_numeric_stats, [field(r, key) for r in rows], [field(r, key) for r in today_rows])
+
     return {
-        "steps": _numeric_stats([field(r, "stepValue") for r in rows]),
-        "distance": _numeric_stats([field(r, "disValue") for r in rows]),
-        "calories": _numeric_stats([field(r, "calValue") for r in rows]),
+        "steps": numeric("stepValue"),
+        "distance": numeric("disValue"),
+        "calories": numeric("calValue"),
     }
 
 
@@ -177,9 +217,10 @@ def generate_trend_summary(
     date_str: str | None = None,
 ) -> TrendSummaryRecord:
     """Stage 2 of the assistant flow: aggregates the trailing 7 days (ending on `date_str`, or
-    today in REPORT_TZ if omitted) of sleep/health/activity data into avg/min/max per metric,
-    then asks the AI (chained from /assistant/profile) to assess each metric against the user's
-    body-characteristic level established in stage 1."""
+    today in REPORT_TZ if omitted) of sleep/health/activity data into avg/min/max per metric, plus
+    a `today` value holding just the last day's own reading (see `_stats_with_today`), then asks
+    the AI (chained from /assistant/profile) to assess each metric — and its change from the
+    7-day baseline — against the user's body-characteristic level established in stage 1."""
     mac_address, previous_response_id = _validate(mac_address, previous_response_id)
 
     device = db.query(DeviceRecord).filter(DeviceRecord.mac_address == mac_address).first()
@@ -203,12 +244,18 @@ def generate_trend_summary(
     if not sleep_rows and not health_rows and not activity_rows:
         raise AssistantError(422, "近 7 天內查無有效資料，無法生成健康趨勢摘要", code="INSUFFICIENT_DATA")
 
+    today_date = end_date.isoformat()
     trend_data = {
-        "sleep": _aggregate_sleep_trend(sleep_rows),
-        "health": _aggregate_health_trend(health_rows),
-        "activity": _aggregate_activity_trend(activity_rows),
+        "sleep": _aggregate_sleep_trend(sleep_rows, today_date),
+        "health": _aggregate_health_trend(health_rows, today_date),
+        "activity": _aggregate_activity_trend(activity_rows, today_date),
     }
-    payload = {"startDate": start_date.isoformat(), "endDate": end_date.isoformat(), "trendData": trend_data}
+    payload = {
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "todayDate": today_date,
+        "trendData": trend_data,
+    }
 
     try:
         prompt = ai_client.with_language(_SYSTEM_PROMPT, language)

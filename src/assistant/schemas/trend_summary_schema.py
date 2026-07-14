@@ -11,6 +11,8 @@ class TrendSummaryData(BaseModel):
     reassessedLevel: str | None = None
     reassessedStandard: str | None = None
     trendData: dict[str, Any]
+    overallSummary: str = ""
+    todayRecommendations: list[str] = []
     sleep: dict[str, Any]
     health: dict[str, Any]
     activity: dict[str, Any]

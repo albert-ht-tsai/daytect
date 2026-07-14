@@ -14,6 +14,9 @@ from src.assistant.api import router as assistant_router
 from src.assistant.models.profile_summary_model import ProfileSummaryRecord  # noqa: F401
 from src.assistant.models.question_summary_model import QuestionSummaryRecord  # noqa: F401
 from src.assistant.models.trend_summary_model import TrendSummaryRecord  # noqa: F401
+from src.auth.api import router as auth_router
+from src.auth.models.user_model import UserRecord  # noqa: F401
+from src.auth.models.verification_code_model import VerificationCodeRecord  # noqa: F401
 from src.core.database import init_db
 from src.device.api import router as device_router
 from src.device.models.activity_model import ActivityRecord  # noqa: F401
@@ -48,5 +51,6 @@ v1_router.include_router(device_router)
 v1_router.include_router(analysis_router)
 v1_router.include_router(health_router)
 v1_router.include_router(assistant_router)
+v1_router.include_router(auth_router)
 
 app.include_router(v1_router)

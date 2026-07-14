@@ -8,7 +8,7 @@ from src.assistant.services.errors import AssistantError
 from src.core import ai_client, files
 from src.core.logging import logger
 
-QUESTION_SUMMARY_MAX_TOKENS = int(os.getenv("ASSISTANT_QUESTION_MAX_TOKENS", 1200))
+QUESTION_SUMMARY_MAX_TOKENS = int(os.getenv("ASSISTANT_QUESTION_MAX_TOKENS", 1500))
 MAX_MESSAGE_LENGTH = 500
 
 _PROMPT_RULES = (Path(__file__).parent / "question_prompt.md").read_text(encoding="utf-8")

@@ -107,6 +107,8 @@ async def trend_endpoint(
             "reassessedLevel": ai_response.get("reassessedLevel"),
             "reassessedStandard": ai_response.get("reassessedStandard"),
             "trendData": record.trend_data or {},
+            "overallSummary": ai_response.get("overallSummary", ""),
+            "todayRecommendations": ai_response.get("todayRecommendations", []),
             "sleep": ai_response.get("sleep", {}),
             "health": ai_response.get("health", {}),
             "activity": ai_response.get("activity", {}),
