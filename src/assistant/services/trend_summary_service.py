@@ -221,11 +221,10 @@ def _validate(mac_address: str | None, previous_response_id: str | None) -> tupl
 
 
 def _resolve_end_date(date_str: str | None) -> date:
-    """Defaults to "today" in REPORT_TZ when the frontend omits `date` (unchanged prior
-    behavior); when given, it's the last day of the trailing 7-day window to query, matching
+    """`date` is required (the last day of the trailing 7-day window to query), matching
     data_summary_service's `date` param semantics."""
     if not date_str or not date_str.strip():
-        return datetime.now(REPORT_TZ).date()
+        raise AssistantError(400, "date 不可為空，需為 YYYY-MM-DD", code="INVALID_PARAMETER")
     try:
         return datetime.strptime(date_str.strip(), "%Y-%m-%d").date()
     except ValueError:
@@ -246,12 +245,12 @@ def generate_trend_summary(
     language: str = "zh",
     date_str: str | None = None,
 ) -> TrendSummaryRecord:
-    """Stage 2 of the assistant flow: aggregates the trailing 7 days (ending on `date_str`, or
-    today in REPORT_TZ if omitted) of sleep/health/activity data into avg/min/max per metric, plus
-    a `today` value holding just the last day's own reading and a `baseline30` avg/min/max over
-    the trailing 30 days (see `_stats_with_today_and_baseline`) — this user's own longer-run
-    normal, preferred over generic ranges — then asks the AI (chained from /assistant/profile) to
-    assess each metric against the user's body-characteristic level established in stage 1."""
+    """Stage 2 of the assistant flow: aggregates the trailing 7 days (ending on the required
+    `date_str`) of sleep/health/activity data into avg/min/max per metric, plus a `today` value
+    holding just the last day's own reading and a `baseline30` avg/min/max over the trailing 30
+    days (see `_stats_with_today_and_baseline`) — this user's own longer-run normal, preferred
+    over generic ranges — then asks the AI (chained from /assistant/profile) to assess each
+    metric against the user's body-characteristic level established in stage 1."""
     mac_address, previous_response_id = _validate(mac_address, previous_response_id)
 
     device = db.query(DeviceRecord).filter(DeviceRecord.mac_address == mac_address).first()

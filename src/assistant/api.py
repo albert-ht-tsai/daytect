@@ -80,14 +80,14 @@ async def trend_endpoint(
     db: SessionDep,
     macAddress: str = Form(...),
     response_id: str = Form(...),
-    date: str | None = Form(None),
+    date: str = Form(...),
     image: list[UploadFile | str] = File(default_factory=list),
     language: Literal["en", "zh"] = Form("zh"),
 ):
     """Stage 2: 分析個人健康趨勢並生成摘要. Must be chained from /assistant/profile's
     responseId (passed here as `response_id`) so the AI already has this user's
-    body-characteristic level in context. `date` (YYYY-MM-DD, optional) is the last day of the
-    trailing 7-day window to query; defaults to today (REPORT_TZ) when omitted."""
+    body-characteristic level in context. `date` (YYYY-MM-DD, required) is the last day of the
+    trailing 7-day window to query."""
     try:
         image_bytes, content_type = await _read_single_image(image)
         record = trend_summary_service.generate_trend_summary(
