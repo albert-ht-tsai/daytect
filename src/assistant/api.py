@@ -70,7 +70,6 @@ async def profile_endpoint(
             "levelLabel": record.level_label,
             "standard": record.standard,
             "summary": record.summary,
-            "previousResponseId": previous_response_id,
             "responseId": record.response_id,
         },
     }
@@ -112,7 +111,6 @@ async def trend_endpoint(
             "sleep": ai_response.get("sleep", {}),
             "health": ai_response.get("health", {}),
             "activity": ai_response.get("activity", {}),
-            "previousResponseId": record.previous_response_id,
             "responseId": record.response_id,
         },
     }
@@ -142,10 +140,10 @@ async def question_endpoint(
         "data": {
             "macAddress": record.mac_address,
             "category": record.category,
+            "intent": record.intent,
             "confidence": record.confidence if record.confidence is not None else 0.0,
             "response": ai_response.get("response"),
             "benefits": ai_response.get("benefits", []),
-            "previousResponseId": record.previous_response_id,
             "responseId": record.response_id,
         },
     }

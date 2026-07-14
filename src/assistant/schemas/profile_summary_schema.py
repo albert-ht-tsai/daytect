@@ -21,7 +21,6 @@ class ProfileSummaryData(BaseModel):
     levelLabel: str
     standard: str
     summary: str
-    previousResponseId: str | None = None
     responseId: str | None = None
 
 

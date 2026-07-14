@@ -16,7 +16,6 @@ class TrendSummaryData(BaseModel):
     sleep: dict[str, Any]
     health: dict[str, Any]
     activity: dict[str, Any]
-    previousResponseId: str
     responseId: str | None = None
 
 

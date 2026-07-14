@@ -8,7 +8,7 @@ from src.assistant.services.errors import AssistantError
 from src.core import ai_client, files
 from src.core.logging import logger
 
-QUESTION_SUMMARY_MAX_TOKENS = int(os.getenv("ASSISTANT_QUESTION_MAX_TOKENS", 1500))
+QUESTION_SUMMARY_MAX_TOKENS = int(os.getenv("ASSISTANT_QUESTION_MAX_TOKENS", 2000))
 MAX_MESSAGE_LENGTH = 500
 
 _PROMPT_RULES = (Path(__file__).parent / "question_prompt.md").read_text(encoding="utf-8")
@@ -76,11 +76,12 @@ def generate_question_summary(
 
     if result.get("inScope", True):
         category = result.get("category") or None
+        intent = result.get("intent") or None
         confidence = result.get("confidence")
         response_payload = result.get("response")
         benefits = result.get("benefits") or []
     else:
-        category, confidence = None, 0.0
+        category, intent, confidence = None, None, 0.0
         response_payload = _INSUFFICIENT_DATA_MESSAGE.get(language, _INSUFFICIENT_DATA_MESSAGE["en"])
         benefits = []
 
@@ -88,6 +89,7 @@ def generate_question_summary(
         mac_address=mac_address,
         user_question=user_question or "[Image]",
         category=category,
+        intent=intent,
         confidence=confidence,
         ai_response={"response": response_payload, "benefits": benefits},
         image_path=image_path,

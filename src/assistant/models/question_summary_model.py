@@ -18,6 +18,9 @@ class QuestionSummaryRecord(Base):
     mac_address = Column(String(50), nullable=False, index=True)
     user_question = Column(Text, nullable=False)
     category = Column(String(16), nullable=True)
+    # Question intent (數據查詢/原因分析/建議需求/綜合評估/計畫規劃) — orthogonal to `category`
+    # (which is the topic domain): this drives which response structure question_prompt.md uses.
+    intent = Column(String(16), nullable=True)
     confidence = Column(Float, nullable=True)
     # {"response": ..., "benefits": [...]} — see question_summary_service.
     ai_response = Column(JSON, nullable=True)
