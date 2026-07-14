@@ -75,6 +75,7 @@ def _run_migrations() -> None:
         "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS activity_summary TEXT",
         "ALTER TABLE health_insight_records ADD COLUMN IF NOT EXISTS health_summary TEXT",
         "ALTER TABLE person_info_records ADD COLUMN IF NOT EXISTS mac_address VARCHAR(50)",
+        "ALTER TABLE user_records ADD COLUMN IF NOT EXISTS tokens_invalidated_at TIMESTAMP",
         # Backfills mac_address for rows saved before this column existed, from the
         # device_records row each already links to via device_id.
         """

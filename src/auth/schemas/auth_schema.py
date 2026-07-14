@@ -37,3 +37,9 @@ class TokenResponse(BaseModel):
 
 class LogoutRequest(BaseModel):
     accessToken: str
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailField
+    verificationCode: str
+    newPassword: str = Field(min_length=8)

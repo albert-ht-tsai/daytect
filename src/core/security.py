@@ -20,8 +20,11 @@ password_hash = PasswordHash(
 
 def create_access_token(subject: str | Any) -> tuple[str, datetime]:
     try:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=60)
-        payload = {"exp": expire, "sub": str(subject), "type": "access"}
+        issued_at = datetime.now(timezone.utc)
+        expire = issued_at + timedelta(minutes=60)
+        # `iat` lets a bulk invalidation (e.g. /auth/reset-password) reject every token issued
+        # before a cutoff, even ones this server never saw and can't revoke individually by hash.
+        payload = {"exp": expire, "iat": issued_at, "sub": str(subject), "type": "access"}
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
         return token, expire
     except JWTError as e:

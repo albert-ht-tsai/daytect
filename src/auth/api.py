@@ -5,6 +5,7 @@ from src.auth.schemas.auth_schema import (
     LoginRequest,
     LogoutRequest,
     RegisterRequest,
+    ResetPasswordRequest,
     SendVerificationRequest,
     TokenResponse,
 )
@@ -38,6 +39,15 @@ def register_endpoint(body: RegisterRequest, db: SessionDep):
     except AuthError as e:
         return _error_response(e)
     return {"success": True, "message": "Registration successful"}
+
+
+@router.post("/reset-password")
+def reset_password_endpoint(body: ResetPasswordRequest, db: SessionDep):
+    try:
+        auth_service.reset_password(db, body)
+    except AuthError as e:
+        return _error_response(e)
+    return {"success": True, "message": "Password reset successful"}
 
 
 @router.post("/login", response_model=TokenResponse)

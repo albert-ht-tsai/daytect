@@ -11,6 +11,7 @@ from src.auth.schemas.auth_schema import (
     LoginRequest,
     LogoutRequest,
     RegisterRequest,
+    ResetPasswordRequest,
     SendVerificationRequest,
     TokenResponse,
 )
@@ -71,6 +72,35 @@ def register(db: Session, body: RegisterRequest) -> None:
     db.commit()
 
 
+def reset_password(db: Session, body: ResetPasswordRequest) -> None:
+    user = db.query(UserRecord).filter(UserRecord.email == body.email).first()
+    if user is None:
+        raise AuthError(404, "Email not registered")
+
+    verification = (
+        db.query(VerificationCodeRecord)
+        .filter(
+            VerificationCodeRecord.email == body.email,
+            VerificationCodeRecord.code == body.verificationCode,
+        )
+        .order_by(VerificationCodeRecord.id.desc())
+        .first()
+    )
+    if verification is None:
+        raise AuthError(400, "Invalid verification code")
+    if verification.expires_at < datetime.utcnow():
+        raise AuthError(400, "Verification code expired")
+
+    # New password may repeat the old one — reset simply overwrites, no reuse check.
+    user.password_hash = get_password_hash(body.newPassword)
+    # Invalidates every access token issued before now (see is_token_revoked), since a password
+    # reset isn't authenticated by a bearer token — there's no single "current token" to revoke
+    # by hash, only every token this account has ever been issued.
+    user.tokens_invalidated_at = datetime.now(timezone.utc)
+    db.delete(verification)
+    db.commit()
+
+
 def login(db: Session, body: LoginRequest) -> TokenResponse:
     user = db.query(UserRecord).filter(UserRecord.email == body.email).first()
     if user is None:
@@ -116,6 +146,27 @@ def logout(db: Session, body: LogoutRequest) -> None:
 
 
 def is_token_revoked(db: Session, token: str) -> bool:
-    """Hook for a future token-verification dependency (none exists yet in this codebase — see
-    /auth/logout) to check before accepting a bearer token."""
-    return db.query(RevokedTokenRecord).filter(RevokedTokenRecord.token_hash == hash_token(token)).first() is not None
+    """Hook for a future token-verification dependency (none exists yet in this codebase) to
+    check before accepting a bearer token. True if either:
+    - this exact token was explicitly revoked (see /auth/logout), or
+    - it was issued before its account's last bulk invalidation (see /auth/reset-password) —
+      requires decoding the token to read `sub`/`iat`, so an undecodable token is treated as not
+      revoked here and left for the caller's own signature/expiry check to reject.
+    """
+    if db.query(RevokedTokenRecord).filter(RevokedTokenRecord.token_hash == hash_token(token)).first() is not None:
+        return True
+
+    try:
+        payload = decode_token(token, verify_exp=False)
+    except JWTError:
+        return False
+
+    issued_at = payload.get("iat")
+    if issued_at is None:
+        return False
+
+    user = db.query(UserRecord).filter(UserRecord.email == payload.get("sub")).first()
+    if user is None or user.tokens_invalidated_at is None:
+        return False
+
+    return datetime.fromtimestamp(issued_at, tz=timezone.utc) < user.tokens_invalidated_at.replace(tzinfo=timezone.utc)
