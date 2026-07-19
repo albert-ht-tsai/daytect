@@ -3,10 +3,8 @@ from typing import Literal
 from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 
-from src.assistant.schemas.profile_summary_schema import ProfileSummaryResponse
 from src.assistant.schemas.question_summary_schema import QuestionSummaryResponse
-from src.assistant.schemas.trend_summary_schema import TrendSummaryResponse
-from src.assistant.services import profile_summary_service, question_summary_service, trend_summary_service
+from src.assistant.services import question_summary_service
 from src.assistant.services.errors import AssistantError
 from src.core.deps import SessionDep
 
@@ -33,101 +31,25 @@ async def _read_single_image(image: list[UploadFile | str]) -> tuple[bytes | Non
     return await picked.read(), picked.content_type
 
 
-@router.post("/profile", response_model=ProfileSummaryResponse)
-async def profile_endpoint(
-    db: SessionDep,
-    macAddress: str = Form(...),
-    response_id: str | None = Form(None),
-    image: list[UploadFile | str] = File(default_factory=list),
-    language: Literal["en", "zh"] = Form("zh"),
-):
-    """Stage 1: 分析個人身體並生成摘要. Not chained from anything (response_id is optional here
-    — pass the previous call's responseId only to continue this device's own profile thread),
-    returns responseId to chain into /assistant/trend."""
-    try:
-        image_bytes, content_type = await _read_single_image(image)
-        record = profile_summary_service.generate_profile_summary(
-            db, macAddress, response_id, image_bytes, content_type, language
-        )
-    except AssistantError as e:
-        return _error_response(e)
-    bmi, bmi_category = profile_summary_service.compute_bmi(record.height, record.weight)
-    return {
-        "success": True,
-        "data": {
-            "macAddress": record.mac_address,
-            "profile": {
-                "sex": record.sex,
-                "age": record.age,
-                "height": record.height,
-                "weight": record.weight,
-                "bmi": bmi,
-                "bmiCategory": bmi_category,
-                "allergy": record.allergy or "",
-                "medicalHistory": record.medical_history or "",
-            },
-            "level": record.level,
-            "levelLabel": record.level_label,
-            "standard": record.standard,
-            "summary": record.summary,
-            "responseId": record.response_id,
-        },
-    }
-
-
-@router.post("/trend", response_model=TrendSummaryResponse)
-async def trend_endpoint(
-    db: SessionDep,
-    macAddress: str = Form(...),
-    response_id: str = Form(...),
-    date: str = Form(...),
-    image: list[UploadFile | str] = File(default_factory=list),
-    language: Literal["en", "zh"] = Form("zh"),
-):
-    """Stage 2: 分析個人健康趨勢並生成摘要. Must be chained from /assistant/profile's
-    responseId (passed here as `response_id`) so the AI already has this user's
-    body-characteristic level in context. `date` (YYYY-MM-DD, required) is the last day of the
-    trailing 7-day window to query."""
-    try:
-        image_bytes, content_type = await _read_single_image(image)
-        record = trend_summary_service.generate_trend_summary(
-            db, macAddress, response_id, image_bytes, content_type, language, date
-        )
-    except AssistantError as e:
-        return _error_response(e)
-    ai_response = record.ai_response or {}
-    return {
-        "success": True,
-        "data": {
-            "macAddress": record.mac_address,
-            "startDate": record.start_date,
-            "endDate": record.end_date,
-            "levelConsistent": record.level_consistent,
-            "reassessedLevel": ai_response.get("reassessedLevel"),
-            "reassessedStandard": ai_response.get("reassessedStandard"),
-            "trendData": record.trend_data or {},
-            "overallSummary": ai_response.get("overallSummary", ""),
-            "todayRecommendations": ai_response.get("todayRecommendations", []),
-            "sleep": ai_response.get("sleep", {}),
-            "health": ai_response.get("health", {}),
-            "activity": ai_response.get("activity", {}),
-            "responseId": record.response_id,
-        },
-    }
-
-
 @router.post("/question", response_model=QuestionSummaryResponse)
 async def question_endpoint(
     db: SessionDep,
-    macAddress: str = Form(...),
-    response_id: str = Form(...),
+    macAddress: str | None = Form(None),
+    response_id: str | None = Form(None),
     message: str | None = Form(None),
     image: list[UploadFile | str] = File(default_factory=list),
     language: Literal["en", "zh"] = Form("zh"),
 ):
-    """Stage 3: 分析用戶問題並生成摘要. Must be chained from /assistant/trend's responseId (or
-    an earlier /assistant/question turn's responseId for a follow-up question), passed here as
-    `response_id`."""
+    """分析用戶問題並生成摘要.
+
+    - macAddress given, no response_id: first turn of a new device-bound conversation — this
+      device's own trailing-7-day sleep/health tables are queried fresh to seed context.
+    - macAddress given, with response_id: chains from an earlier /assistant/question turn in the
+      same device-bound conversation, without re-querying the database.
+    - No macAddress: the user has no device bound; answered as a standard, non-personalized
+      health assistant instead, optionally chained via response_id to an earlier turn of this
+      same no-device conversation.
+    """
     try:
         image_bytes, content_type = await _read_single_image(image)
         record = question_summary_service.generate_question_summary(
@@ -140,6 +62,7 @@ async def question_endpoint(
         "success": True,
         "data": {
             "macAddress": record.mac_address,
+            "deviceBound": record.mac_address is not None,
             "category": record.category,
             "intent": record.intent,
             "confidence": record.confidence if record.confidence is not None else 0.0,

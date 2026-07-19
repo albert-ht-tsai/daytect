@@ -4,7 +4,8 @@ from pydantic import BaseModel
 
 
 class QuestionSummaryData(BaseModel):
-    macAddress: str
+    macAddress: str | None
+    deviceBound: bool
     category: str | None = None
     intent: str | None = None
     confidence: float

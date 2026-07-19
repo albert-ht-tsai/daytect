@@ -77,6 +77,10 @@ def _run_migrations() -> None:
         "ALTER TABLE person_info_records ADD COLUMN IF NOT EXISTS mac_address VARCHAR(50)",
         "ALTER TABLE user_records ADD COLUMN IF NOT EXISTS tokens_invalidated_at TIMESTAMP",
         "ALTER TABLE assistant_question_summary_records ADD COLUMN IF NOT EXISTS intent VARCHAR(16)",
+        "ALTER TABLE health_summary_records ALTER COLUMN mac_address DROP NOT NULL",
+        "ALTER TABLE health_summary_records ALTER COLUMN data_summary_response_id DROP NOT NULL",
+        "ALTER TABLE assistant_question_summary_records ALTER COLUMN mac_address DROP NOT NULL",
+        "ALTER TABLE assistant_question_summary_records ALTER COLUMN previous_response_id DROP NOT NULL",
         # Backfills mac_address for rows saved before this column existed, from the
         # device_records row each already links to via device_id.
         """
