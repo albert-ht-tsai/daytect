@@ -17,6 +17,7 @@ from src.device.models.device_model import DeviceRecord  # noqa: F401
 from src.device.models.health_model import HealthRecord  # noqa: F401
 from src.device.models.sleep_model import SleepRecord  # noqa: F401
 from src.feedback.api import router as feedback_router
+from src.feedback.models.feedback_model import FeedbackRecord  # noqa: F401
 
 load_dotenv()
 
