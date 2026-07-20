@@ -16,6 +16,7 @@ from src.device.models.activity_model import ActivityRecord  # noqa: F401
 from src.device.models.device_model import DeviceRecord  # noqa: F401
 from src.device.models.health_model import HealthRecord  # noqa: F401
 from src.device.models.sleep_model import SleepRecord  # noqa: F401
+from src.feedback.api import router as feedback_router
 
 load_dotenv()
 
@@ -40,5 +41,6 @@ v1_router = APIRouter(prefix="/v1")
 v1_router.include_router(device_router)
 v1_router.include_router(assistant_router)
 v1_router.include_router(auth_router)
+v1_router.include_router(feedback_router)
 
 app.include_router(v1_router)

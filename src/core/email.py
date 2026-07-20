@@ -11,6 +11,8 @@ MAIL_USERNAME = os.getenv("MAIL_USERNAME")
 MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
 MAIL_FROM_ADDRESS = os.getenv("MAIL_FROM_ADDRESS")
 MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME", "")
+# Mailbox that receives user feedback submissions; defaults to the sending mailbox itself.
+FEEDBACK_TO_ADDRESS = os.getenv("FEEDBACK_TO_ADDRESS", MAIL_FROM_ADDRESS)
 
 
 def send_email(to: str, subject: str, body: str) -> None:
