@@ -11,6 +11,9 @@ class DeviceRecord(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=True)
     mac_address = Column(String(50), unique=True, index=True, nullable=False)
+    # Which user this device is bound to, if any (set opportunistically by POST /device when the
+    # caller is logged in). Nullable: devices can still be registered/synced without a user.
+    user_id = Column(Integer, nullable=True, index=True)
     battery = Column(Integer, nullable=True)
     last_sync = Column(String(19), nullable=True)
     is_connected = Column(Boolean, nullable=False, default=False)

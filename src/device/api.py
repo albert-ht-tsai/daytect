@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from src.core.deps import SessionDep
+from src.core.deps import OptionalUserId, SessionDep
 from src.device.schemas.activity_schema import ActivityUploadRequest
 from src.device.schemas.device_schema import DeviceCreateRequest
 from src.device.schemas.health_schema import HealthDataResponse, HealthUploadRequest
@@ -11,8 +11,8 @@ router = APIRouter(tags=["device"])
 
 
 @router.post("/device")
-def create_device_endpoint(body: DeviceCreateRequest, db: SessionDep):
-    device_service.create_device(db, body)
+def create_device_endpoint(body: DeviceCreateRequest, db: SessionDep, user_id: OptionalUserId = None):
+    device_service.create_device(db, body, user_id)
     return {"success": True, "message": "Device data saved successfully"}
 
 

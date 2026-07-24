@@ -14,6 +14,7 @@ class DeviceResponse(BaseModel):
     id: int
     name: str | None
     macAddress: str
+    userId: int | None = None
     battery: int | None = None
     lastSync: str | None = None
     isConnected: bool = False

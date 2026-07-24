@@ -42,6 +42,10 @@ def _run_migrations() -> None:
         "ALTER TABLE device_records ADD COLUMN IF NOT EXISTS battery INTEGER",
         "ALTER TABLE device_records ADD COLUMN IF NOT EXISTS last_sync VARCHAR(19)",
         "ALTER TABLE device_records ADD COLUMN IF NOT EXISTS is_connected BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE device_records ADD COLUMN IF NOT EXISTS user_id INTEGER",
+        "ALTER TABLE health_report_records ADD COLUMN IF NOT EXISTS include_ai_analysis BOOLEAN "
+        "NOT NULL DEFAULT TRUE",
+        "ALTER TABLE health_report_records DROP COLUMN IF EXISTS timezone",
         "DROP TABLE IF EXISTS activity_records CASCADE",
         "DROP TABLE IF EXISTS health_records CASCADE",
         "ALTER TABLE sleep_records DROP COLUMN IF EXISTS sleep_quality",
