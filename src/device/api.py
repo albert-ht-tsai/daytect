@@ -25,8 +25,8 @@ def get_device_endpoint(macAddress: str, db: SessionDep):
 
 
 @router.post("/device/sleep")
-def upload_sleep_endpoint(body: SleepUploadRequest, db: SessionDep):
-    sleep_service.upload_sleep(db, body)
+def upload_sleep_endpoint(body: SleepUploadRequest, db: SessionDep, user_id: OptionalUserId = None):
+    sleep_service.upload_sleep(db, body, user_id)
     return {"success": True, "message": "Sleep data saved successfully"}
 
 
@@ -39,14 +39,14 @@ def get_sleep_endpoint(macAddress: str, date: str, db: SessionDep):
 
 
 @router.post("/device/activity")
-def upload_activity_endpoint(body: ActivityUploadRequest, db: SessionDep):
-    activity_service.upload_activity(db, body)
+def upload_activity_endpoint(body: ActivityUploadRequest, db: SessionDep, user_id: OptionalUserId = None):
+    activity_service.upload_activity(db, body, user_id)
     return {"success": True, "message": "Activity data saved successfully"}
 
 
 @router.post("/device/health")
-def upload_health_endpoint(body: HealthUploadRequest, db: SessionDep):
-    health_service.upload_health(db, body)
+def upload_health_endpoint(body: HealthUploadRequest, db: SessionDep, user_id: OptionalUserId = None):
+    health_service.upload_health(db, body, user_id)
     return {"success": True, "message": "Health data saved successfully"}
 
 

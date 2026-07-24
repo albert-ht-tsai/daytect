@@ -154,6 +154,50 @@ def _default_ai_fallback(overall_status: str) -> dict:
     }
 
 
+def _collect_allowed_numbers(payload) -> set[float]:
+    """Every numeric leaf in the evidence payload sent to the AI — the allowlist used to check
+    the AI's structured `potential_risks[].evidence[]` numbers (calculation spec §7 / prompt rule:
+    "AI 回覆中的數字必須來自輸入 payload；輸出後以 metric/value allowlist 驗證")."""
+    numbers: set[float] = set()
+
+    def walk(node):
+        if isinstance(node, dict):
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+        elif isinstance(node, (int, float)) and not isinstance(node, bool):
+            numbers.add(round(float(node), 2))
+
+    walk(payload)
+    return numbers
+
+
+def _number_allowed(value, allowed: set[float]) -> bool:
+    if value is None:
+        return True  # optional field left blank — nothing to validate
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return False
+    tolerance = max(0.5, abs(value) * 0.02)
+    return any(abs(value - a) <= tolerance for a in allowed)
+
+
+def _validate_ai_evidence(ai_json: dict, allowed: set[float]) -> None:
+    """Drops `potential_risks[].evidence[]` entries whose value/change can't be traced back to a
+    number in the evidence payload, instead of trusting AI-generated numbers verbatim. Scoped to
+    the structured `evidence` array only — free-text fields (`description`/`content`) are natural
+    language and are not scanned digit-by-digit (see CALCULATION_SPEC.md §7 for this limitation)."""
+    for risk in ai_json.get("potential_risks", []):
+        evidence = risk.get("evidence") or []
+        risk["evidence"] = [
+            e for e in evidence
+            if _number_allowed(e.get("value"), allowed) and _number_allowed(e.get("change"), allowed)
+        ]
+
+
 def run_generation(report_id: str) -> None:
     """Entry point for FastAPI BackgroundTasks (see health_report/api.py). Runs after the HTTP
     response for POST /health-reports has already been sent, so it cannot reuse the
@@ -183,6 +227,7 @@ def run_generation(report_id: str) -> None:
         all_dates = report_stats_service.date_range(
             period["period_start"], period["period_end"]
         ) + report_stats_service.date_range(period["comparison_start"], period["comparison_end"])
+        baseline_dates = report_stats_service.baseline_date_range(period["period_start"])
 
         summary = report_stats_service.compute_summary(
             device,
@@ -190,21 +235,34 @@ def run_generation(report_id: str) -> None:
             _fetch_records(db, HealthRecord, device.id, all_dates),
             _fetch_records(db, ActivityRecord, device.id, all_dates),
             period,
+            baseline_health_records=_fetch_records(db, HealthRecord, device.id, baseline_dates),
         )
+        # calculation spec §1: fewer than 3 valid days in the period or the comparison period ->
+        # no weekly comparison at all, including the "vs last report" score change below.
+        comparison_allowed = summary.pop("_comparison_allowed")
 
-        pre_comparison_end = date.fromisoformat(period["comparison_start"]) - timedelta(days=1)
-        pre_comparison_start = pre_comparison_end - timedelta(days=report_stats_service.PERIOD_DAYS - 1)
-        previous_scores = _scores_for_window(
-            db,
-            device,
-            period["comparison_start"],
-            period["comparison_end"],
-            pre_comparison_start.isoformat(),
-            pre_comparison_end.isoformat(),
-        )
+        # Aggregation/comparison/scoring (calculation spec's AGGREGATING/COMPARING/SCORING
+        # stages, ~11-78% — see API_SPEC.md's stage table) are all done by this point; bump
+        # progress before the AI step so pollers see something other than a stuck 20% during
+        # what's usually the slowest part of the synchronous stats pass.
+        record.progress = 75
+        db.commit()
+
+        previous_scores = {}
+        if comparison_allowed:
+            pre_comparison_end = date.fromisoformat(period["comparison_start"]) - timedelta(days=1)
+            pre_comparison_start = pre_comparison_end - timedelta(days=report_stats_service.PERIOD_DAYS - 1)
+            previous_scores = _scores_for_window(
+                db,
+                device,
+                period["comparison_start"],
+                period["comparison_end"],
+                pre_comparison_start.isoformat(),
+                pre_comparison_end.isoformat(),
+            )
 
         record.stage = "ai_analysis"
-        record.progress = 60
+        record.progress = 85
         db.commit()
 
         if record.include_ai_analysis:
@@ -213,6 +271,7 @@ def run_generation(report_id: str) -> None:
                 "comparison_period": summary["comparison_period"],
                 "data_quality": summary["data_quality"],
                 "overall": summary["overall"],
+                "weekly_changes": summary["weekly_changes"],
                 "category_summary": summary["category_summary"],
                 "priority_items": summary["priority_items"],
                 "sleep_summary": summary["sleep_summary"],
@@ -233,6 +292,7 @@ def run_generation(report_id: str) -> None:
                 record.error_message = f"AI 分析產生失敗：{e}"
                 db.commit()
                 return
+            _validate_ai_evidence(ai_json, _collect_allowed_numbers(evidence_payload))
             ai_analysis = {
                 "model": ai_client.OPENAI_MODEL,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -269,6 +329,7 @@ def run_generation(report_id: str) -> None:
                 "title": overall_title,
                 "summary": overall_summary,
             },
+            "weekly_changes": summary["weekly_changes"],
             "priority_items": summary["priority_items"],
             "category_summary": {
                 category: {
